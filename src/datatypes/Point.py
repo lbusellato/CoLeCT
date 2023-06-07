@@ -1,6 +1,7 @@
 import numpy as np
 
 from dataclasses import dataclass
+from src.datatypes import Quaternion
 
 
 @dataclass
@@ -9,8 +10,14 @@ class Point():
     database.
     """
     time: float = 0.0
-    pose: np.ndarray = np.zeros(6)
-    twist: np.ndarray = np.zeros(6)
-    quat: np.ndarray = np.zeros(4)
-    quat_eucl: np.ndarray = np.zeros(3)
-    wrench: np.ndarray = np.zeros(6)
+    x: float = 0.0
+    y: float = 0.0
+    z: float = 0.0
+    rot: Quaternion = Quaternion.from_array([1.0, 0.0, 0.0, 0.0])
+    rot_eucl: np.ndarray = np.array([0.0, 0.0, 0.0])
+    fx: float = 0.0
+    fy: float = 0.0
+    fz: float = 0.0
+    mx: float = 0.0
+    my: float = 0.0
+    mz: float = 0.0

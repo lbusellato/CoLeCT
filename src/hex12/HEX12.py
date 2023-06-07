@@ -7,6 +7,12 @@ from serial.serialutil import SerialException
 from serial.tools import list_ports
 from serial import Serial
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s.%(msecs)03d %(levelname)s %(message)s',
+    datefmt='%Y-%m-%d,%H:%M:%S'
+)
+
 
 class HEX12():
     """Handles collecting data from the HEX12 6 DOF force/torque sensor.
@@ -33,7 +39,7 @@ class HEX12():
             If True, logging will be set to DEBUG, otherwise it will be set to INFO.
         """
         # Set up logging
-        self._logger = logging.getLogger()
+        self._logger = logging.getLogger(__name__)
         self._logger.setLevel(logging.DEBUG if verbose else logging.INFO)
         # Set up the connection
         self._com_port = com_port
@@ -106,7 +112,6 @@ class HEX12():
         """
         ports = list_ports.comports()
         for port, _, hwid in ports:
-            # TODO: is the serial number always the same?
             if 'SER=' + self.serial_number in hwid:
                 self._logger.debug(f'Found sensor connected to {port}')
                 return port

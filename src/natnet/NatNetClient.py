@@ -8,6 +8,11 @@ import time
 from typing import Callable, List
 from threading import Thread
 
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s.%(msecs)03d %(levelname)s %(message)s',
+    datefmt='%Y-%m-%d,%H:%M:%S'
+)
 
 # Structs to speed up parsing
 Vector3 = struct.Struct('<fff')
@@ -223,7 +228,7 @@ class NatNetClient():
             If True, logging will be set to DEBUG, otherwise it will be set to INFO.
         """
         # Set up logging
-        self._logger = logging.getLogger()
+        self._logger = logging.getLogger(__name__)
         self._logger.setLevel(logging.DEBUG if verbose else logging.INFO)
         # Client/server settings
         self._server_address = server_address
