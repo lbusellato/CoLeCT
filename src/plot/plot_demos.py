@@ -1,20 +1,48 @@
 import csv
 import matplotlib.pyplot as plt
 import numpy as np
-import os
 import sys
 
+from os import listdir
+from os.path import abspath, dirname, isfile, join
 from fastdtw import fastdtw
-from os.path import abspath, dirname
+
 
 # Collection of interesting plots
+
+ROOT = dirname(dirname(dirname(abspath(__file__))))
+
+
+def plot_demo(ax, demonstration, linestyle='solid', label=''):
+    # Plot all the data in a demonstration
+    time = demonstration[:, 0]
+    x = demonstration[:, 1]
+    y = demonstration[:, 2]
+    z = demonstration[:, 3]
+    fx = demonstration[:, 4]
+    fy = demonstration[:, 5]
+    fz = demonstration[:, 6]
+    tx = demonstration[:, 7]
+    ty = demonstration[:, 8]
+    tz = demonstration[:, 9]
+    data = [x, y, z, fx, fy, fz, tx, ty, tz]
+    y_labels = ['x [m]', 'y [m]', 'z [m]',
+                'Fx [N]', 'Fy [N]', 'Fz [N]',
+                'Mx - [Nm]', 'My - [Nm]', 'Mz - [Nm]']
+    for i in range(3):
+        for j in range(3):
+            ax[i, j].plot(time, data[i*3 + j],
+                          linestyle=linestyle, label=label)
+            ax[i, j].set_ylabel(y_labels[i*3 + j])
+            ax[i, j].grid()
+            if i == 2:
+                ax[i, j].set_xlabel('Time [s]')
 
 
 def signal_sync_test():
     # Show that the force readings and the pose readings are indeed synchronized
-    recording_path = os.path.join(
-        dirname(dirname(abspath(__file__))), 'plot/demonstrations/signal_sync_test')
-    file = os.path.join(recording_path, 'signal_sync_test.csv')
+    demo_path = join(ROOT, 'demonstrations/signal_sync_test')
+    file = join(demo_path, 'signal_sync_test.csv')
     ax = plt.figure().add_subplot()
     # Recover the demonstration from the .csv file
     filename = open(file, 'r')
@@ -27,8 +55,8 @@ def signal_sync_test():
             y0 = float(col['pos_y'])
             f0 = float(col['force_z'])
         point = [
-            float(col['pos_y']) - y0,
-            (float(col['force_z']) - f0)/1000,]
+            float(col['pos_y']) - y0,  # Match the sign of the force
+            (float(col['force_z']) - f0)/1000,]  # Scale just for visualization
         demo.append(point)
     demo = np.array(demo)
     demo = demo / np.linalg.norm(demo)
@@ -38,21 +66,21 @@ def signal_sync_test():
     ax.set_xlabel('Time [ms]')
     ax.legend()
     ax.grid()
-    plots_path = os.path.join(
-        dirname(dirname(abspath(__file__))), 'plot/plots')
-    plt.savefig(os.path.join(plots_path, 'signal_sync_test.png'))
+    plots_path = join(ROOT, 'media')
+    plt.savefig(join(plots_path, 'signal_sync_test.png'))
     plt.show()
 
-def dtw():
+
+def dtw():  
     # Using DTW (Dynamic Time Warping) to achieve temporal alignment of demonstrations
-    demo_path = os.path.join(
-        dirname(dirname(abspath(__file__))), 'plot/demonstrations/dtw')
-    res = [path for path in os.listdir(demo_path) if os.path.isfile(os.path.join(demo_path, path))]
+    demo_path = join(ROOT, 'demonstrations/dtw')
+    res = [path for path in listdir(
+        demo_path) if isfile(join(demo_path, path))]
     ax = plt.figure().add_subplot()
     demonstrations = []
     # Recover the demonstrations from the .csv files
     for i, path in enumerate(res):
-        filename = open(os.path.join(demo_path, path), 'r')
+        filename = open(join(demo_path, path), 'r')
         file = csv.DictReader(filename)
         demo = []
         for col in file:
@@ -74,7 +102,8 @@ def dtw():
     paths = []
     for i, demo in enumerate(demonstrations):
         if i != reference_demo:
-            distance, path = fastdtw(demonstrations[reference_demo][:], demo[:], dist=2)
+            distance, path = fastdtw(
+                demonstrations[reference_demo][:], demo[:], dist=2)
             distances.append(distance)
             paths.append(path)
         else:
@@ -89,18 +118,17 @@ def dtw():
             for [x, y] in path:
                 if x != prev_x:
                     aligned_demo.append(demonstrations[i][y])
-                prev_x = x 
+                prev_x = x
             aligned_demos.append(np.array(aligned_demo))
-    for i,demo in enumerate(aligned_demos):
+    for i, demo in enumerate(aligned_demos):
         if i != reference_demo:
             ax.plot(demo[:], label=str(i)+'-aligned')
     ax.legend()
     ax.grid()
     ax.set_xlabel('Time [ms]')
     ax.set_title('Signal alignment with DTW')
-    plots_path = os.path.join(
-        dirname(dirname(abspath(__file__))), 'plot/plots')
-    plt.savefig(os.path.join(plots_path, 'dtw.png'))
+    plots_path = join(ROOT, 'media')
+    plt.savefig(join(plots_path, 'dtw.png'))
     plt.show()
 
 
@@ -111,6 +139,7 @@ def main(demo_number):
         dtw()
     else:
         pass
+
 
 if __name__ == '__main__':
     if len(sys.argv) > 1:
