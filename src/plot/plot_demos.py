@@ -13,29 +13,41 @@ from fastdtw import fastdtw
 ROOT = dirname(dirname(dirname(abspath(__file__))))
 
 
+def demo_to_array(dataset):
+    ret = []
+    for point in dataset:
+        ret.append([point.timestamp, point.x, point.y, point.z, point.rot.as_array()[0], point.rot.as_array()[
+                   1], point.rot.as_array()[2], point.rot.as_array()[3], point.rot_eucl[0], point.rot_eucl[1], point.rot_eucl[2], point.fx, point.fy, point.fz, point.mx, point.my, point.mz])
+    return np.array(ret)
+
+
 def plot_demo(ax, demonstration, linestyle='solid', label=''):
     # Plot all the data in a demonstration
-    time = demonstration[:, 0]
-    x = demonstration[:, 1]
-    y = demonstration[:, 2]
-    z = demonstration[:, 3]
-    fx = demonstration[:, 4]
-    fy = demonstration[:, 5]
-    fz = demonstration[:, 6]
-    tx = demonstration[:, 7]
-    ty = demonstration[:, 8]
-    tz = demonstration[:, 9]
-    data = [x, y, z, fx, fy, fz, tx, ty, tz]
+    time = [0.001*i for i in range(len(demonstration))]
+    x = [p.x for p in demonstration]
+    y = [p.y for p in demonstration]
+    z = [p.z for p in demonstration]
+    qx = [p.rot.as_array()[1] for p in demonstration]    
+    qy = [p.rot.as_array()[2] for p in demonstration]    
+    qz = [p.rot.as_array()[3] for p in demonstration]    
+    fx = [p.fx for p in demonstration]    
+    fy = [p.fy for p in demonstration]    
+    fz = [p.fz for p in demonstration]
+    tx = [p.mx for p in demonstration]
+    ty = [p.my for p in demonstration]
+    tz = [p.mz for p in demonstration]
+    data = [x, y, z, qx, qy, qz, fx, fy, fz, tx, ty, tz]
     y_labels = ['x [m]', 'y [m]', 'z [m]',
+                'qx', 'qy', 'qz',
                 'Fx [N]', 'Fy [N]', 'Fz [N]',
                 'Mx - [Nm]', 'My - [Nm]', 'Mz - [Nm]']
-    for i in range(3):
+    for i in range(4):
         for j in range(3):
             ax[i, j].plot(time, data[i*3 + j],
                           linestyle=linestyle, label=label)
             ax[i, j].set_ylabel(y_labels[i*3 + j])
             ax[i, j].grid()
-            if i == 2:
+            if i == 3:
                 ax[i, j].set_xlabel('Time [s]')
 
 
@@ -71,7 +83,7 @@ def signal_sync_test():
     plt.show()
 
 
-def dtw():  
+def dtw():
     # Using DTW (Dynamic Time Warping) to achieve temporal alignment of demonstrations
     demo_path = join(ROOT, 'demonstrations/dtw')
     res = [path for path in listdir(
@@ -132,11 +144,25 @@ def dtw():
     plt.show()
 
 
+def interpolation():
+    demo_path = join(ROOT, 'demonstrations/interpolation_test')
+    res = [join('demonstrations/interpolation_test', path) for path in listdir(
+        demo_path) if 'dataset' in path and isfile(join(demo_path, path))]
+    fig, ax = plt.subplots(4, 3)
+    # Recover the demonstrations from the .csv files
+    for i, path in enumerate(res):
+        demo = np.load(join(ROOT, path), allow_pickle=True)
+        plot_demo(ax, demo, label=i)
+    plt.show()
+
+
 def main(demo_number):
     if demo_number == 1:
         signal_sync_test()
     elif demo_number == 2:
         dtw()
+    elif demo_number == 3:
+        interpolation()
     else:
         pass
 

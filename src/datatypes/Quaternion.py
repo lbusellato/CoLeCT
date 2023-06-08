@@ -17,7 +17,7 @@ class Quaternion:
     def __init__(self, v: float, u: ArrayLike) -> None:
         self.v = v
         self.u = u
-        self.normalize()
+        if self.v is not None: self.normalize()
 
     @classmethod
     def from_rotation_vector(cls, rotation_vector: ArrayLike) -> 'Quaternion':
@@ -86,7 +86,7 @@ class Quaternion:
         array-like of shape (3,)
             The projection in R^3 of self.
         """
-        norm = np.linalg.norm(self.as_array())
+        norm = np.linalg.norm(self.as_array()) + np.finfo(np.float64).tiny 
         u = np.sign(self.v)*self.u/norm
         v = np.sign(self.v)*self.v/norm
         if not np.allclose(u, np.zeros_like(u)):
@@ -122,7 +122,7 @@ class Quaternion:
         quaternion
             The result of the normalization.
         """
-        norm = np.linalg.norm(self.as_array())
+        norm = np.linalg.norm(self.as_array()) + np.finfo(np.float64).tiny 
         self.u = self.u/norm
         self.v = self.v/norm
         return self

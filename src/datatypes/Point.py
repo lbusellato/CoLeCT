@@ -9,7 +9,7 @@ class Point():
     """Dataclass that defines the representation of each point in the demonstration
     database.
     """
-    time: float = 0.0
+    timestamp: float = 0.0
     x: float = 0.0
     y: float = 0.0
     z: float = 0.0

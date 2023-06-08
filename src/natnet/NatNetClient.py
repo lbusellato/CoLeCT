@@ -256,7 +256,7 @@ class NatNetClient():
         # Wait a bit then check the connection status
         time.sleep(1)
         if self.connected() is False:
-            logger.error("Could not connect properly. Check that Motive streaming is running" +
+            self._logger.error("Could not connect properly. Check that Motive streaming is running" +
                          " and that the server/client IPs are set correctly.")
             try:
                 sys.exit(2)
