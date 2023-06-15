@@ -1,6 +1,7 @@
 import csv
 import matplotlib.pyplot as plt
 import numpy as np
+import re
 import sys
 
 from os import listdir
@@ -40,7 +41,7 @@ def plot_demo(ax, demonstration, linestyle='solid', label=''):
     y_labels = ['x [m]', 'y [m]', 'z [m]',
                 'qx', 'qy', 'qz',
                 'Fx [N]', 'Fy [N]', 'Fz [N]',
-                'Mx - [Nm]', 'My - [Nm]', 'Mz - [Nm]']
+                'Mx - [Nmm]', 'My - [Nmm]', 'Mz - [Nmm]']
     for i in range(4):
         for j in range(3):
             ax[i, j].plot(time, data[i*3 + j],
@@ -146,8 +147,9 @@ def dtw():
 
 def interpolation():
     demo_path = join(ROOT, 'demonstrations/interpolation_test')
+    regex = r'dataset(\d{2})\.npy'
     res = [join('demonstrations/interpolation_test', path) for path in listdir(
-        demo_path) if 'dataset' in path and isfile(join(demo_path, path))]
+        demo_path) if re.match(regex, path) is not None]
     fig, ax = plt.subplots(4, 3)
     # Recover the demonstrations from the .csv files
     for i, path in enumerate(res):

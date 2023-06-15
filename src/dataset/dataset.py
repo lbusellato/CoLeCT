@@ -1,8 +1,9 @@
 import csv
 import numpy as np
+import re
 
 from os import listdir
-from os.path import abspath, dirname, isfile, join
+from os.path import abspath, dirname, join
 from src.datatypes import Point, Quaternion
 from tslearn.metrics import soft_dtw_alignment
 
@@ -10,19 +11,22 @@ from tslearn.metrics import soft_dtw_alignment
 ROOT = dirname(dirname(dirname(abspath(__file__))))
 
 
-def create_dataset(demonstrations_path: str = '') -> None:
+def create_dataset(demonstrations_path: str = '', demonstration_regex: str = r'interpolation_test(\d{2})\.csv') -> None:
     """Process a set of demonstration recordings into an usable dataset
 
     Parameters
     ----------
     demonstrations_path : str, default = ''
         The path of the directory containing the demonstrations, relative to ROOT.
+    demonstration_regex : str, default = r'interpolation_test(\d{2})\.csv'
+        Regex used to locate the relevant files in the path.
     """
-    files = [f for f in listdir(demonstrations_path) if '.npy' not in f and isfile(
-        join(demonstrations_path, f))]
+    demonstrations_path = join(ROOT, demonstrations_path)
+    files = [f for f in listdir(demonstrations_path) if re.match(
+        demonstration_regex, f) is not None]
     qa = []
     out = []
-    for file in files:
+    for i, file in enumerate(files):
         t_cnt = 1
         t_dt = 0.001
         with open(join(demonstrations_path, file)) as csv_file:
@@ -51,7 +55,8 @@ def create_dataset(demonstrations_path: str = '') -> None:
                 quat_eucl = (quat*~qa).log()
                 out.append(
                     Point(t, x, y, z, quat, quat_eucl, fx, fy, fz, mx, my, mz))
-            np.save(join(ROOT, demonstrations_path, f'{file[:-4]}.npy'), out)
+            np.save(join(ROOT, demonstrations_path,
+                    f'dataset{i:02d}.npy'), out)
             out = []
 
 
@@ -64,8 +69,9 @@ def trim_datasets(datasets_path: str = '') -> None:
         The path to the datasets, relative to ROOT.
     """
     datasets_path = join(ROOT, datasets_path)
-    datasets = [f for f in listdir(datasets_path) if '.csv' not in f and isfile(
-        join(datasets_path, f))]
+    regex = r'dataset(\d{2})\.npy'
+    datasets = [f for f in listdir(
+        datasets_path) if re.match(regex, f) is not None]
     for file in datasets:
         dataset = np.load(join(datasets_path, file), allow_pickle=True)
         # Figure out the indexes to slice the dataset with
@@ -80,7 +86,7 @@ def trim_datasets(datasets_path: str = '') -> None:
         np.save(join(ROOT, datasets_path, file), trimmed_dataset)
 
 
-def dataset_to_array(dataset):
+def as_array(dataset):
     ret = []
     for point in dataset:
         ret.append([point.timestamp, point.x, point.y, point.z, point.rot.as_array()[0], point.rot.as_array()[
@@ -98,11 +104,12 @@ def interpolate_datasets(datasets_path: str = ''):
     """
     # TODO: this is not written that well...
     datasets_path = join(ROOT, datasets_path)
-    datasets = [f for f in listdir(datasets_path) if '.csv' not in f and isfile(
-        join(datasets_path, f))]
+    regex = r'dataset(\d{2})\.npy'
+    datasets = [f for f in listdir(
+        datasets_path) if re.match(regex, f) is not None]
     for file in datasets:
         dataset = np.load(join(datasets_path, file), allow_pickle=True)
-        interp_dataset = dataset_to_array(dataset)
+        interp_dataset = as_array(dataset)
         # Find the indices of the known points (non-zero rows)
         known_indices = np.nonzero(
             np.any(interp_dataset[:, 1:7] != 0, axis=1))[0]
@@ -123,11 +130,13 @@ def interpolate_datasets(datasets_path: str = ''):
         for i in range(4):
             interp_dataset[missing_indices, i +
                            4] = np.interp(time_missing, time_known, orientation_known[:, i])
+        qa = Quaternion.from_array(orientation_known[0])
         for i in missing_indices:
             t, x, y, z, w, qx, qy, qz, qe1, qe2, qe3, fx, fy, fz, mx, my, mz = interp_dataset[
                 i]
+            quat_eucl = (Quaternion.from_array([w, qx, qy, qz])*~qa).log()
             new_point = Point(
-                t, x, y, z, Quaternion.from_array([w, qx, qy, qz]), [qe1, qe2, qe3], fx, fy, fz, mx, my, mz)
+                t, x, y, z, Quaternion.from_array([w, qx, qy, qz]), quat_eucl, fx, fy, fz, mx, my, mz)
             dataset[i] = new_point
         np.save(join(ROOT, datasets_path, file), dataset)
 
@@ -152,15 +161,29 @@ def align_datasets(datasets_path: str = ''):
         The path to the datasets, relative to ROOT.
     """
     datasets_path = join(ROOT, datasets_path)
-    files = [f for f in listdir(datasets_path) if '.csv' not in f and 'dataset' not in f and isfile(
-        join(datasets_path, f))]
+    regex = r'dataset(\d{2})\.npy'
+    files = [f for f in listdir(datasets_path)
+             if re.match(regex, f) is not None]
     files.sort()
     datasets = [np.load(join(datasets_path, file), allow_pickle=True)
                 for file in files]
-    reference = [p.x for p in datasets[0]]
+    reference = as_array(datasets[0])[:, 1:8]
     for i, dataset in enumerate(datasets):
         if i > 0:
-            s1 = [p.x for p in dataset]
-            cost_matrix, _ = soft_dtw_alignment(s1, reference, gamma=0.1)
+            cost_matrix, _ = soft_dtw_alignment(
+                as_array(dataset)[:, 1:8], reference, gamma=2.5)
             np.save(join(ROOT, datasets_path,
-                    f'new{i}.npy'), dataset[compute_alignment_path(cost_matrix)])
+                    f'dataset{i:02d}.npy'), dataset[compute_alignment_path(cost_matrix)])
+
+
+def postprocessing(datasets_path: str = ''):
+    """Apply all postprocessing operations on the dataset.
+
+    Parameters
+    ----------
+    datasets_path : str, default = ''
+        The path to the datasets, relative to ROOT.
+    """
+    trim_datasets(datasets_path)
+    interpolate_datasets(datasets_path)
+    align_datasets(datasets_path)

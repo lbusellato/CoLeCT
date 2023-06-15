@@ -21,3 +21,15 @@ class Point():
     mx: float = 0.0
     my: float = 0.0
     mz: float = 0.0
+
+    def position(self):
+        return [self.x, self.y, self.z]
+
+    def force(self):
+        return [self.fx, self.fy, self.fz]
+
+    def torque(self):
+        return [self.mx, self.my, self.mz]
+
+    def as_array(self):
+        return [self.x, self.y, self.z, self.rot_eucl[0], self.rot_eucl[1], self.rot_eucl[2], self.fx, self.fy, self.fz, self.mx, self.my, self.mz]

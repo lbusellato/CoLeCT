@@ -1,5 +1,4 @@
 import logging
-import matplotlib.pyplot as plt
 import numpy as np
 
 from numpy.linalg import inv, det
@@ -180,11 +179,9 @@ class GaussianMixtureModel:
             X_cntr = X - np.tile(mu, (self.n_demos_*self.n_samples_, 1)).T
             pdf = np.sum(X_cntr.T@inv(sigma)*X_cntr.T, axis=1)
             try:
-                pdf = np.exp(-0.5*pdf)/np.sqrt((2*np.pi) **
-                                               (self.n_features_)*np.abs(det(sigma)))
+                pdf = np.exp(-0.5*pdf)/np.sqrt((2*np.pi) ** (self.n_features_)*np.abs(det(sigma)))
             except ZeroDivisionError:
-                pdf = np.exp(-0.5*pdf)/np.sqrt((2*np.pi) **
-                                               (self.n_features_)*np.abs(det(sigma)) + REALMIN)
+                pdf = np.exp(-0.5*pdf)/np.sqrt((2*np.pi) ** (self.n_features_)*np.abs(det(sigma)) + REALMIN)
         return pdf
 
     def __likelihood(self,
@@ -295,25 +292,18 @@ class GaussianMixtureModel:
                 try:
                     gamma = L/np.tile(np.sum(L, axis=0), (n_components, 1))
                 except ZeroDivisionError:
-                    gamma = L/np.tile(np.sum(L, axis=0) +
-                                      REALMIN, (n_components, 1))
-                gamma_mean = gamma / \
-                    np.tile(np.sum(gamma, axis=1),
-                            (self.n_samples_*self.n_demos_, 1)).T
+                    gamma = L/np.tile(np.sum(L, axis=0) + REALMIN, (n_components, 1))
+                gamma_mean = gamma / np.tile(np.sum(gamma, axis=1), (self.n_samples_*self.n_demos_, 1)).T
                 # Maximization step
                 for c in range(n_components):
                     # Update priors
-                    priors[c] = np.sum(gamma[c]) / \
-                        (self.n_samples_*self.n_demos_)
+                    priors[c] = np.sum(gamma[c]) / (self.n_samples_*self.n_demos_)
                     # Update mean
                     means[:, c] = X @ gamma_mean[c].T
                     # Update covariance
-                    X_cntr = X.T - \
-                        np.tile(means[:, c],
-                                (self.n_samples_*self.n_demos_, 1))
+                    X_cntr = X.T - np.tile(means[:, c], (self.n_samples_*self.n_demos_, 1))
                     sigma = X_cntr.T @ np.diag(gamma_mean[c]) @ X_cntr
-                    covariances[:, :, c] = sigma + \
-                        np.eye(self.n_features_)*self.reg_factor
+                    covariances[:, :, c] = sigma + np.eye(self.n_features_)*self.reg_factor
                 # Average log likelihood
                 LL[it] = np.mean(np.log(np.sum(L, axis=0)))
                 # Check convergence
@@ -323,22 +313,8 @@ class GaussianMixtureModel:
                         ddbics = np.gradient(np.gradient(bics))
                     break
         if len(ddbics) > 0:
-            fig, ax = plt.subplots(1, 1, figsize=(6, 4))
-            n_components = np.argwhere(
-                np.abs(ddbics < self.model_selection_tol))[0]
+            n_components = np.argwhere(np.abs(ddbics < self.model_selection_tol))[0]
             n_components = n_components[0]
-            ax.plot(np.arange(1, len(bics)+1), bics)
-            ax.scatter(np.arange(1, len(bics)+1), bics)
-            ax.scatter(n_components, bics[n_components], c='r')
-            ax.set_title('Model selection')
-            ax.set_xlabel('Number of components')
-            import matplotlib.ticker as plticker
-            # this locator puts ticks at regular intervals
-            loc = plticker.MultipleLocator(base=1.0)
-            ax.xaxis.set_major_locator(loc)
-            ax.set_ylabel('BIC score')
-            ax.grid()
-            fig.show()
         # Setup the arrays for the priors, means and covariance matrices
         priors = np.zeros((n_components))
         means = np.zeros((self.n_features_, n_components))
@@ -367,12 +343,10 @@ class GaussianMixtureModel:
             L = self.__likelihood(X, covariances, means, priors, n_components)
             # Pseudo posterior
             try:
-                gamma = L/np.tile(np.sum(L, axis=0), (n_components, 1))
+                gamma = L / np.tile(np.sum(L, axis=0), (n_components, 1))
             except ZeroDivisionError:
-                gamma = L/np.tile(np.sum(L, axis=0)+REALMIN, (n_components, 1))
-            gamma_mean = gamma / \
-                np.tile(np.sum(gamma, axis=1),
-                        (self.n_samples_*self.n_demos_, 1)).T
+                gamma = L / np.tile(np.sum(L, axis=0)+REALMIN, (n_components, 1))
+            gamma_mean = gamma / np.tile(np.sum(gamma, axis=1), (self.n_samples_*self.n_demos_, 1)).T
             # Maximization step
             for c in range(n_components):
                 # Update priors
@@ -380,11 +354,9 @@ class GaussianMixtureModel:
                 # Update mean
                 means[:, c] = X @ gamma_mean[c].T
                 # Update covariance
-                X_cntr = X.T - \
-                    np.tile(means[:, c], (self.n_samples_*self.n_demos_, 1))
+                X_cntr = X.T - np.tile(means[:, c], (self.n_samples_*self.n_demos_, 1))
                 sigma = X_cntr.T @ np.diag(gamma_mean[c]) @ X_cntr
-                covariances[:, :, c] = sigma + \
-                    np.eye(self.n_features_)*self.reg_factor
+                covariances[:, :, c] = sigma + np.eye(self.n_features_)*self.reg_factor
             # Average log likelihood
             LL[it] = np.mean(np.log(np.sum(L, axis=0)))
             # Check convergence
