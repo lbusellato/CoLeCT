@@ -4,7 +4,6 @@ import numpy as np
 from numpy.linalg import inv, det
 from numpy.random import default_rng
 from numpy.typing import ArrayLike
-from src.cluster import Uniform, KMeans
 from typing import Tuple
 
 logging.basicConfig(
@@ -41,17 +40,6 @@ class GaussianMixtureModel:
     tol : float, default=1e-4
         Convergence criterion (lower bound for the average log-likelihood) for the EM algorithm.
         Must be strictly positive.
-
-    init_params : str, default='kmeans'
-        Method used to initialize the prior probabilities, means and covariances. Must be one of:
-            - 'uniform': The data seen during `fit` is evenly split in `n_components` clusters.
-            - 'kmeans': The data seen during `fit` is clusterized using the KMeans algorithm.
-
-    kmeans_iter : int, default=10
-        Number of iterations for the KMeans algorithm.
-
-    kmeans_tol : float, default=1e-4
-        Convergence criterion for the KMeans algorithm. Must be strictly positive.
 
     model_selection_tol : float, default=25
         Tolerance for the selection of the optimal number of Gaussian components.    
@@ -105,10 +93,7 @@ class GaussianMixtureModel:
                  n_demos: int = 5,
                  max_it: int = 100,
                  tol: float = 1e-4,
-                 init_params: str = 'kmeans',
-                 kmeans_iter: int = 100,
-                 kmeans_tol: float = 1e-4,
-                 model_selection_tol: float = 25,
+                 model_selection_tol: float = 5,
                  random_state: int = None,
                  reg_factor: float = 1e-4) -> None:
         # Input arguments check
@@ -122,13 +107,6 @@ class GaussianMixtureModel:
             raise ValueError('tol must be strictly positive.')
         if reg_factor < 0:
             raise ValueError('reg_factor must be strictly positive.')
-        if kmeans_iter < 0:
-            raise ValueError('kmeans_iter must be strictly positive.')
-        if kmeans_tol < 0:
-            raise ValueError('kmeans_tol must be strictly positive.')
-        if init_params not in ['uniform', 'kmeans']:
-            raise ValueError(
-                'init_params must be either \'uniform\' or \'kmeans\'.')
         # Class attributes
         self.n_components_ = n_components
         if n_components_range is None:
@@ -138,9 +116,6 @@ class GaussianMixtureModel:
         self.max_it = max_it
         self.tol = tol
         self.reg_factor = reg_factor
-        self.init_params = init_params
-        self.kmeans_iter = kmeans_iter
-        self.kmeans_tol = kmeans_tol
         self.model_selection_tol = model_selection_tol
         self.rng = default_rng(random_state)
         self._logger = logging.getLogger(__name__)
@@ -259,75 +234,73 @@ class GaussianMixtureModel:
         # Model selection
         bics = []
         ddbics = []
-        for n_components in self.n_components_range:
-            # Setup the arrays for the priors, means and covariance matrices
-            priors = np.zeros((n_components))
-            means = np.zeros((self.n_features_, n_components))
-            covariances = np.zeros(
-                (self.n_features_, self.n_features_, n_components))
-            # Clusterization of the dataset
-            if self.init_params == 'uniform':
-                cluster = Uniform(n_components, self.n_demos_)
-            elif self.init_params == 'kmeans':
-                cluster = KMeans(
-                    n_components, self.kmeans_iter, self.kmeans_tol)
-            labels = cluster.fit_predict(X)
-            # Initial guess for GMM
-            for c in range(n_components):
-                ids = [i for i, val in enumerate(labels) if val == c]
-                # Compute priors, mean and the covariance matrix
-                priors[c] = len(ids)
-                means[:, c] = np.mean(X[:, ids].T, axis=0)
-                covariances[:, :, c] = np.cov(
-                    X[:, ids]) + np.eye(self.n_features_)*self.reg_factor
-            # Normalize the prior probabilities
-            priors = priors/np.sum(priors)
-            # Expectation-Maximization
-            LL = np.zeros(self.max_it)
-            for it in range(self.max_it):
-                # Expectation step
-                L = self.__likelihood(
-                    X, covariances, means, priors, n_components)
-                # Pseudo posterior
-                try:
-                    gamma = L/np.tile(np.sum(L, axis=0), (n_components, 1))
-                except ZeroDivisionError:
-                    gamma = L/np.tile(np.sum(L, axis=0) + REALMIN, (n_components, 1))
-                gamma_mean = gamma / np.tile(np.sum(gamma, axis=1), (self.n_samples_*self.n_demos_, 1)).T
-                # Maximization step
+        if len(self.n_components_range) > 1:
+            for n_components in self.n_components_range:
+                # Setup the arrays for the priors, means and covariance matrices
+                priors = np.zeros((n_components))
+                means = np.zeros((self.n_features_, n_components))
+                covariances = np.zeros(
+                    (self.n_features_, self.n_features_, n_components))
+                # Clusterization of the dataset
+                n_samples = int(X.shape[1]/self.n_demos_)
+                labels = np.tile((np.arange(n_samples)*n_components/n_samples).astype(int), self.n_demos_)
+                # Initial guess for GMM
                 for c in range(n_components):
-                    # Update priors
-                    priors[c] = np.sum(gamma[c]) / (self.n_samples_*self.n_demos_)
-                    # Update mean
-                    means[:, c] = X @ gamma_mean[c].T
-                    # Update covariance
-                    X_cntr = X.T - np.tile(means[:, c], (self.n_samples_*self.n_demos_, 1))
-                    sigma = X_cntr.T @ np.diag(gamma_mean[c]) @ X_cntr
-                    covariances[:, :, c] = sigma + np.eye(self.n_features_)*self.reg_factor
-                # Average log likelihood
-                LL[it] = np.mean(np.log(np.sum(L, axis=0)))
-                # Check convergence
-                if it > 0 and (it >= self.max_it or np.abs(LL[it]-LL[it-1]) < self.tol):
-                    bics.append(self.__bic(X, LL[it], n_components))
-                    if len(bics) > 1:
-                        ddbics = np.gradient(np.gradient(bics))
-                    break
+                    ids = [i for i, val in enumerate(labels) if val == c]
+                    # Compute priors, mean and the covariance matrix
+                    priors[c] = len(ids)
+                    means[:, c] = np.mean(X[:, ids].T, axis=0)
+                    covariances[:, :, c] = np.cov(
+                        X[:, ids]) + np.eye(self.n_features_)*self.reg_factor
+                # Normalize the prior probabilities
+                priors = priors/np.sum(priors)
+                # Expectation-Maximization
+                LL = np.zeros(self.max_it)
+                for it in range(self.max_it):
+                    # Expectation step
+                    L = self.__likelihood(
+                        X, covariances, means, priors, n_components)
+                    # Pseudo posterior
+                    try:
+                        gamma = L/np.tile(np.sum(L, axis=0), (n_components, 1))
+                    except ZeroDivisionError:
+                        gamma = L/np.tile(np.sum(L, axis=0) + REALMIN, (n_components, 1))
+                    gamma_mean = gamma / np.tile(np.sum(gamma, axis=1), (self.n_samples_*self.n_demos_, 1)).T
+                    # Maximization step
+                    for c in range(n_components):
+                        # Update priors
+                        priors[c] = np.sum(gamma[c]) / (self.n_samples_*self.n_demos_)
+                        # Update mean
+                        means[:, c] = X @ gamma_mean[c].T
+                        # Update covariance
+                        X_cntr = X.T - np.tile(means[:, c], (self.n_samples_*self.n_demos_, 1))
+                        sigma = X_cntr.T @ np.diag(gamma_mean[c]) @ X_cntr
+                        covariances[:, :, c] = sigma + np.eye(self.n_features_)*self.reg_factor
+                    # Average log likelihood
+                    LL[it] = np.mean(np.log(np.sum(L, axis=0)))
+                    # Check convergence
+                    if it > 0 and (it >= self.max_it or np.abs(LL[it]-LL[it-1]) < self.tol):
+                        bics.append(self.__bic(X, LL[it], n_components))
+                        if len(bics) > 1:
+                            ddbics = np.gradient(np.gradient(bics))
+                        break
         if len(ddbics) > 0:
-            n_components = np.argwhere(np.abs(ddbics < self.model_selection_tol))[0]
-            n_components = n_components[0]
+            self.ddbics = np.abs(ddbics)
+            n_components = np.argwhere(np.abs(ddbics) <= self.model_selection_tol)
+            if n_components.shape[0] != 0:
+                self.n_components_ = self.n_components_range[n_components[0]][0]
+            else:
+                self.n_components_ = self.n_components_range[np.argmin(np.abs(ddbics))]
         # Setup the arrays for the priors, means and covariance matrices
-        priors = np.zeros((n_components))
-        means = np.zeros((self.n_features_, n_components))
+        priors = np.zeros((self.n_components_))
+        means = np.zeros((self.n_features_, self.n_components_))
         covariances = np.zeros(
-            (self.n_features_, self.n_features_, n_components))
+            (self.n_features_, self.n_features_, self.n_components_))
         # Clusterization of the dataset
-        if self.init_params == 'uniform':
-            cluster = Uniform(n_components, self.n_demos_)
-        elif self.init_params == 'kmeans':
-            cluster = KMeans(n_components, self.kmeans_iter, self.kmeans_tol)
-        labels = cluster.fit_predict(X)
+        n_samples = int(X.shape[1]/self.n_demos_)
+        labels = np.tile((np.arange(n_samples)*self.n_components_/n_samples).astype(int), self.n_demos_)
         # Initial guess for GMM
-        for c in range(n_components):
+        for c in range(self.n_components_):
             ids = [i for i, val in enumerate(labels) if val == c]
             # Compute priors, mean and the covariance matrix
             priors[c] = len(ids)
@@ -340,15 +313,15 @@ class GaussianMixtureModel:
         LL = np.zeros(self.max_it)
         for it in range(self.max_it):
             # Expectation step
-            L = self.__likelihood(X, covariances, means, priors, n_components)
+            L = self.__likelihood(X, covariances, means, priors, self.n_components_)
             # Pseudo posterior
             try:
-                gamma = L / np.tile(np.sum(L, axis=0), (n_components, 1))
+                gamma = L / np.tile(np.sum(L, axis=0), (self.n_components_, 1))
             except ZeroDivisionError:
-                gamma = L / np.tile(np.sum(L, axis=0)+REALMIN, (n_components, 1))
+                gamma = L / np.tile(np.sum(L, axis=0)+REALMIN, (self.n_components_, 1))
             gamma_mean = gamma / np.tile(np.sum(gamma, axis=1), (self.n_samples_*self.n_demos_, 1)).T
             # Maximization step
-            for c in range(n_components):
+            for c in range(self.n_components_):
                 # Update priors
                 priors[c] = np.sum(gamma[c])/(self.n_samples_*self.n_demos_)
                 # Update mean
@@ -362,11 +335,10 @@ class GaussianMixtureModel:
             # Check convergence
             if it > 0 and (it >= self.max_it or np.abs(LL[it]-LL[it-1]) < self.tol):
                 self._logger.info(
-                    f'EM converged in {it} iterations. n_components: {n_components}, BIC: {self.__bic(X,LL[it],n_components)}')
+                    f'EM converged in {it} iterations. n_components: {self.n_components_}, BIC: {self.__bic(X,LL[it],self.n_components_)}')
                 self.priors_ = priors
                 self.covariances_ = covariances
                 self.means_ = means
-                self.n_components_ = n_components
                 self.converged_ = True
                 self.n_iter = it
                 break

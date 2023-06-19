@@ -51,6 +51,7 @@ class KMP:
         self.tol = tol
         self.kernel_gamma = kernel_gamma
         self.priorities = priorities
+        self.kl_divergence = None
         self._logger = logging.getLogger(__name__)
 
     def set_waypoint(self,
@@ -137,7 +138,7 @@ class KMP:
         O = int(self.O/2)
         # Compute the kernel blocks
         ktt = self.__kernel(t1, t2, self.kernel_gamma)
-        if self.O > 3:
+        """if self.O > 3:
             ktd_tmp = self.__kernel(t1, t2dt, self.kernel_gamma)
             ktd = (ktd_tmp - ktt)/dt
             kdt_tmp = self.__kernel(t1dt, t2, self.kernel_gamma)
@@ -147,8 +148,8 @@ class KMP:
             # Construct the kernel
             kernel = np.block([[ktt*np.eye(O), ktd*np.eye(O)],
                               [kdt*np.eye(O), kdd*np.eye(O)]])
-        else:  # Position only output case
-            kernel = ktt*np.eye(self.O)
+        else:  # Position only output case"""
+        kernel = ktt*np.eye(self.O)
         return kernel
 
     def fit(self,
@@ -243,5 +244,30 @@ class KMP:
             xi[:, j] = k@self.__mean_estimator@Y
             sigma[:, :, j] = (self.N/self.lc)*(self.__kernel_matrix(s[:, j],
                                                                     s[:, j]) - k@self.__covariance_estimator@k.T)
-        self._logger.info('KMP Done.')
+        self.kl_divergence = self.KL_divergence(self.xi, xi)
+        self._logger.info(f'KMP Done. KL : {self.kl_divergence}')
         return xi, sigma
+
+    def KL_divergence(self, p: ArrayLike, q: ArrayLike) -> float:
+        """Computes the Kullback-Leibler divergence for the model.
+
+        Parameters
+        ----------
+
+        p : ArrayLike of shape (n_features, n_samples)
+            The GMR trajectory.
+        q : ArrayLike of shape (n_features, n_samples)
+            The KMP trajectory.
+
+        Returns
+        -------
+        float
+            The computed KL divergence.
+        """
+        p_norm = p / np.sum(p, axis=0)
+        q_norm = q / np.sum(q, axis=0)  
+        # Some terms might produce nan values, fix that
+        epsilon = 1e-10  
+        p_norm[p_norm < epsilon] = epsilon
+        q_norm[q_norm < epsilon] = epsilon  
+        return np.sum(p_norm * np.log(np.divide(p_norm, q_norm)))

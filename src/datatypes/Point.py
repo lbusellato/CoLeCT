@@ -22,14 +22,59 @@ class Point():
     my: float = 0.0
     mz: float = 0.0
 
-    def position(self):
-        return [self.x, self.y, self.z]
+    @property
+    def position(self) -> np.ndarray:
+        """
+        Get the value of position.
+    
+        Returns:
+            np.ndarray: The value of position.
+        """
+        return np.array([self.x, self.y, self.z])
+    
+    @property
+    def orientation(self) -> np.ndarray:
+        """
+        Get the value of orientation.
+    
+        Returns:
+            np.ndarray: The value of orientation.
+        """
+        return self.rot.as_array()
+    
+    @property
+    def force(self) -> np.ndarray:
+        """
+        Get the value of force.
+    
+        Returns:
+            np.ndarray: The value of force.
+        """
+        return np.array([self.fx, self.fy, self.fz])
+    
+    @property
+    def torque(self) -> np.ndarray:
+        """
+        Get the value of torque.
+    
+        Returns:
+            np.ndarray: The value of torque.
+        """
+        return np.array([self.mx, self.my, self.mz])
 
-    def force(self):
-        return [self.fx, self.fy, self.fz]
-
-    def torque(self):
-        return [self.mx, self.my, self.mz]
+    @property
+    def wrench(self) -> np.ndarray:
+        """
+        Get the value of wrench.
+    
+        Returns:
+            np.ndarray: The value of wrench.
+        """
+        return np.concatenate((self.force, self.torque))
 
     def as_array(self):
-        return [self.x, self.y, self.z, self.rot_eucl[0], self.rot_eucl[1], self.rot_eucl[2], self.fx, self.fy, self.fz, self.mx, self.my, self.mz]
+        return np.array([self.x, self.y, self.z, self.rot_eucl[0], self.rot_eucl[1], self.rot_eucl[2], self.fx, self.fy, self.fz, self.mx, self.my, self.mz])
+    
+    @classmethod
+    def from_array(cls, array):
+        return cls(*array)

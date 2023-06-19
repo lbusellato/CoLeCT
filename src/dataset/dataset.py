@@ -87,11 +87,11 @@ def trim_datasets(datasets_path: str = '') -> None:
 
 
 def as_array(dataset):
-    ret = []
-    for point in dataset:
-        ret.append([point.timestamp, point.x, point.y, point.z, point.rot.as_array()[0], point.rot.as_array()[
-                   1], point.rot.as_array()[2], point.rot.as_array()[3], point.rot_eucl[0], point.rot_eucl[1], point.rot_eucl[2], point.fx, point.fy, point.fz, point.mx, point.my, point.mz])
-    return np.array(ret)
+    return np.vstack([point.as_array() for point in dataset])
+
+
+def from_array(array):
+   return [Point.from_array(row) for row in array.T]
 
 
 def interpolate_datasets(datasets_path: str = ''):
@@ -167,6 +167,7 @@ def align_datasets(datasets_path: str = ''):
     files.sort()
     datasets = [np.load(join(datasets_path, file), allow_pickle=True)
                 for file in files]
+    np.save(join(ROOT, datasets_path, f'dataset00.npy'), datasets[0])
     reference = as_array(datasets[0])[:, 1:8]
     for i, dataset in enumerate(datasets):
         if i > 0:
@@ -174,16 +175,3 @@ def align_datasets(datasets_path: str = ''):
                 as_array(dataset)[:, 1:8], reference, gamma=2.5)
             np.save(join(ROOT, datasets_path,
                     f'dataset{i:02d}.npy'), dataset[compute_alignment_path(cost_matrix)])
-
-
-def postprocessing(datasets_path: str = ''):
-    """Apply all postprocessing operations on the dataset.
-
-    Parameters
-    ----------
-    datasets_path : str, default = ''
-        The path to the datasets, relative to ROOT.
-    """
-    trim_datasets(datasets_path)
-    interpolate_datasets(datasets_path)
-    align_datasets(datasets_path)
