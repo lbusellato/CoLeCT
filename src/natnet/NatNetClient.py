@@ -1,5 +1,7 @@
 import copy
+import ipaddress
 import logging
+import netifaces
 import struct
 import socket
 import sys
@@ -210,18 +212,18 @@ class NatNetClient():
     NAT_UNDEFINED = 999999.9999
 
     def __init__(self,
-                 server_address: str = '127.0.0.1',
-                 client_address: str = '127.0.0.1',
+                 server_address: str = None,
+                 client_address: str = None,
                  rigid_body_listener: Callable = None,
                  verbose: bool = False) -> None:
         """_summary_
 
         Parameters
         ----------
-        server_address : str, default = '127.0.0.1'
-            IP address of the server.
-        client_address : str, default = '127.0.0.1'
-            IP address of the client.
+        server_address : str, default = None
+            IP address of the server. If None, autodiscovery will be attempted. 
+        client_address : str, default = None
+            IP address of the client. If None, autodiscovery will be attempted.
         rigid_body_listener : Callable, default = None
             Callback method for when rigid body data is sent from the server.
         verbose : bool, default = False
@@ -231,11 +233,15 @@ class NatNetClient():
         self._logger = logging.getLogger(__name__)
         self._logger.setLevel(logging.DEBUG if verbose else logging.INFO)
         # Client/server settings
-        self._server_address = server_address
-        self._client_address = client_address
-        self._multicast_address = '239.255.42.99'
         self._command_port = 1510
         self._data_port = 1511
+        if client_address is None:
+            client_address = self.client_address_autodiscovery()
+        if server_address is None:
+            server_address = self.server_address_autodiscovery()
+        self._client_address = client_address
+        self._server_address = server_address
+        self._multicast_address = '239.255.42.99'
         self._rigid_body_listener = rigid_body_listener
         self._command_thread = None
         self._data_thread = None
@@ -317,6 +323,68 @@ class NatNetClient():
         if self.command_socket is None or self.data_socket is None:
             return False
         return True
+    
+    def server_address_autodiscovery(self) -> str:
+        """Attempt to discover the OptiTrack server's IP.
+
+        Parameters
+        ----------
+        client_address : str, default = '127.0.0.1'
+            The IP of the client.
+
+        Returns
+        -------
+        str
+            The IP of the server.
+        """
+        # Get the network subnet range
+        interfaces = netifaces.interfaces()
+        network = None
+        for interface in interfaces:
+            if interface != 'lo':
+                if netifaces.AF_INET in netifaces.ifaddresses(interface):
+                    addresses = netifaces.ifaddresses(interface)[netifaces.AF_INET]
+                    if addresses:
+                        ip = addresses[0]['addr']
+                        subnet_mask = addresses[0]['netmask']
+                        network = ipaddress.IPv4Network(f"{ip}/{subnet_mask}", strict=False)
+        if network is None:
+            self._logger.error(f'Command socket error: {e}')
+            return None
+        # Loop over the subnet range and try to contact the server
+        for ip in ipaddress.IPv4Network(network):
+            ip_address = str(ip)
+            client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            client_socket.settimeout(1)
+            try:
+                result = client_socket.connect_ex((ip_address, self.command_port))
+                if result == 0:
+                    self._logger.info(f"Discovered server IP: {ip_address}")
+                    return ip_address
+            except socket.error as e:
+                self._logger.error(f'Command socket error: {e}')
+            finally:
+                client_socket.close()
+        return None
+
+    def client_address_autodiscovery(self) -> str:
+        """Find out the IP address of the client machine.
+
+        Returns
+        -------
+        str
+            The client's IP address.
+        """
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.settimeout(0)
+        try:
+            s.connect(('10.254.254.254', 1))
+            res = s.getsockname()[0]
+        except Exception:
+            res = '127.0.0.1'
+        finally:
+            s.close()
+        return res
 
     def _send_request(self,
                       command_id: int,

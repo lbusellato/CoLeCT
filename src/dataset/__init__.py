@@ -1,1 +1,1 @@
-from .dataset import from_array, create_dataset, trim_datasets, align_datasets, interpolate_datasets, as_array
+from .dataset import from_array, create_dataset, trim_datasets, align_datasets, interpolate_datasets, as_array, load_datasets
