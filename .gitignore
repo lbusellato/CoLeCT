@@ -1,3 +1,4 @@
 colect-venv/
 **/__pycache__/
 .vscode/
+trained_models/

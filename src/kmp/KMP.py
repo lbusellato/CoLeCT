@@ -18,41 +18,51 @@ class KMP:
 
     Parameters
     ----------
-    l : int, default=0.5
+    lambda1 : int, default=0.1
         Lambda regularization factor for the mean minimization problem.
-    lc : int, default=10
-        Lambda_c regularization factor for the covariance minimization problem.
+    lambda2 : float, default=1
+        Lambda regularization factor for the covariance minimization problem.
+    l : float, default=0.01
+        Inner coefficient of the squared exponential term.Z
+    sigma_f : float, default=1
+        Outer coefficient of the squared exponential term.Z
     tol : float, default=0.0005
         Tolerance for the discrimination of conflicting points.
-    kernel_gamma : int, default=6
-        Coefficient for the rbf kernel. 
     priorities : array-like of shape (n_trajectories,), default=None
         Functions that map the input space into a priority value for trajectory superposition. The 
         sum of all priority functions evaluated in the same (any) input must be one.
+    verbose : bool
+        Enable/disable verbose output.
     """
 
     def __init__(self,
-                 l: float = 0.5,
-                 lc: int = 10,
+                 lambda1: float = 0.1,
+                 lambda2: float = 1.0,
+                 l: float = 0.01,
+                 sigma_f: float = 1.0,
                  tol: float = 0.0005,
-                 kernel_gamma: int = 6,
-                 priorities: ArrayLike = None) -> None:
+                 priorities: ArrayLike = None,
+                 verbose: bool = False) -> None:
+        if lambda1 <= 0:
+            raise ValueError('lambda1 must be strictly positive.')
+        if lambda2 <= 0:
+            raise ValueError('lambda2 must be strictly positive.')
         if l <= 0:
             raise ValueError('l must be strictly positive.')
-        if lc <= 0:
-            raise ValueError('lc must be strictly positive.')
+        if sigma_f <= 0:
+            raise ValueError('sigma_f must be strictly positive.')
         if tol <= 0:
             raise ValueError('tol must be strictly positive.')
-        if kernel_gamma <= 0:
-            raise ValueError('kernel_gamma must be strictly positive.')
         self.trained = False
+        self.lambda1 = lambda1
+        self.lambda2 = lambda2
         self.l = l
-        self.lc = lc
+        self.sigma_f = sigma_f
         self.tol = tol
-        self.kernel_gamma = kernel_gamma
         self.priorities = priorities
         self.kl_divergence = None
         self._logger = logging.getLogger(__name__)
+        self._logger.setLevel(level=logging.DEBUG if verbose else logging.INFO)
 
     def set_waypoint(self,
                      s: ArrayLike,
@@ -90,30 +100,6 @@ class KMP:
         # Refit the model with the new data
         self.fit(self.s, self.xi, self.sigma)
 
-    def __kernel(self,
-                 t1: float,
-                 t2: float,
-                 gamma: float) -> float:
-        """Computes the Gaussian kernel function for the given input pair.
-
-        Parameters
-        ----------
-        t1 : float
-            The first input.
-        t2 : float
-            The second input.
-        gamma : float
-            l term in the exponential. Must be strictly positive.
-
-        Returns
-        -------
-        kernel : float
-                The result of the evaluation.
-        """
-        if gamma <= 0:
-            raise ValueError('gamma must be strictly positive.')
-        return np.exp(-gamma*(t1-t2)**2)[0]
-
     def __kernel_matrix(self,
                         t1: float,
                         t2: float) -> ArrayLike:
@@ -131,26 +117,7 @@ class KMP:
         kernel : array-like of shape (n_features,n_features)
             The kernel matrix evaluated in the provided input pair.
         """
-        dt = 0.001
-        t1dt = t1 + dt
-        t2dt = t2 + dt
-        # Half of the output features are position, the other half velocity
-        O = int(self.O/2)
-        # Compute the kernel blocks
-        ktt = self.__kernel(t1, t2, self.kernel_gamma)
-        """if self.O > 3:
-            ktd_tmp = self.__kernel(t1, t2dt, self.kernel_gamma)
-            ktd = (ktd_tmp - ktt)/dt
-            kdt_tmp = self.__kernel(t1dt, t2, self.kernel_gamma)
-            kdt = (kdt_tmp - ktt)/dt
-            kdd_tmp = self.__kernel(t1dt, t2dt, self.kernel_gamma)
-            kdd = (kdd_tmp - ktd_tmp - kdt_tmp + ktt)/dt**2
-            # Construct the kernel
-            kernel = np.block([[ktt*np.eye(O), ktd*np.eye(O)],
-                              [kdt*np.eye(O), kdd*np.eye(O)]])
-        else:  # Position only output case"""
-        kernel = ktt*np.eye(self.O)
-        return kernel
+        return self.sigma_f*np.exp(-(1/self.l)*(t1-t2)**2)[0]*np.eye(self.O)
 
     def fit(self,
             X: ArrayLike,
@@ -209,9 +176,9 @@ class KMP:
                 if i == j:
                     # Add the regularization terms on the diagonal
                     k_mean[j*self.O:(j+1)*self.O, i*self.O:(i+1)
-                           * self.O] = kernel + self.l*self.sigma[:, :, i]
+                           * self.O] = kernel + self.lambda1*self.sigma[:, :, i]
                     k_covariance[j*self.O:(j+1)*self.O, i*self.O:(i+1)
-                                 * self.O] = kernel + self.lc*self.sigma[:, :, i]
+                                 * self.O] = kernel + self.lambda2*self.sigma[:, :, i]
         self.__mean_estimator = np.linalg.inv(k_mean)
         self.__covariance_estimator = np.linalg.inv(k_covariance)
 
@@ -242,7 +209,7 @@ class KMP:
                 for h in range(self.O):
                     Y[i*self.O+h] = self.xi[h, i]
             xi[:, j] = k@self.__mean_estimator@Y
-            sigma[:, :, j] = (self.N/self.lc)*(self.__kernel_matrix(s[:, j],
+            sigma[:, :, j] = (self.N/self.lambda2)*(self.__kernel_matrix(s[:, j],
                                                                     s[:, j]) - k@self.__covariance_estimator@k.T)
         self.kl_divergence = self.KL_divergence(self.xi, xi)
         self._logger.info(f'KMP Done. KL : {self.kl_divergence}')
