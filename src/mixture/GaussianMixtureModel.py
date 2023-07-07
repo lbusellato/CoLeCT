@@ -95,18 +95,7 @@ class GaussianMixtureModel:
                  tol: float = 1e-4,
                  model_selection_tol: float = 5,
                  random_state: int = None,
-                 reg_factor: float = 1e-4) -> None:
-        # Input arguments check
-        if n_components < 0:
-            raise ValueError('n_components must be strictly positive.')
-        if n_demos < 0:
-            raise ValueError('n_demos must be strictly positive.')
-        if max_it < 0:
-            raise ValueError('max_it must be strictly positive.')
-        if tol < 0:
-            raise ValueError('tol must be strictly positive.')
-        if reg_factor < 0:
-            raise ValueError('reg_factor must be strictly positive.')
+                 reg_factor: float = 1e-8) -> None:
         # Class attributes
         self.n_components_ = n_components
         if n_components_range is None:

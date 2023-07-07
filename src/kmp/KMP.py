@@ -18,14 +18,14 @@ class KMP:
 
     Parameters
     ----------
-    lambda1 : int, default=0.1
+    lambda1 : int, default=0.5
         Lambda regularization factor for the mean minimization problem.
-    lambda2 : float, default=1
+    lambda2 : float, default=0.5
         Lambda regularization factor for the covariance minimization problem.
-    l : float, default=0.01
-        Inner coefficient of the squared exponential term.Z
+    alpha : float, default=40
+        Coefficient for the covariance prediction.
     sigma_f : float, default=1
-        Outer coefficient of the squared exponential term.Z
+        Kernel coefficient.
     tol : float, default=0.0005
         Tolerance for the discrimination of conflicting points.
     priorities : array-like of shape (n_trajectories,), default=None
@@ -36,27 +36,17 @@ class KMP:
     """
 
     def __init__(self,
-                 lambda1: float = 0.1,
-                 lambda2: float = 1.0,
-                 l: float = 0.01,
+                 lambda1: float = 0.5,
+                 lambda2: float = 0.5,
+                 alpha: float = 40,
                  sigma_f: float = 1.0,
                  tol: float = 0.0005,
                  priorities: ArrayLike = None,
                  verbose: bool = False) -> None:
-        if lambda1 <= 0:
-            raise ValueError('lambda1 must be strictly positive.')
-        if lambda2 <= 0:
-            raise ValueError('lambda2 must be strictly positive.')
-        if l <= 0:
-            raise ValueError('l must be strictly positive.')
-        if sigma_f <= 0:
-            raise ValueError('sigma_f must be strictly positive.')
-        if tol <= 0:
-            raise ValueError('tol must be strictly positive.')
         self.trained = False
         self.lambda1 = lambda1
         self.lambda2 = lambda2
-        self.l = l
+        self.alpha = alpha
         self.sigma_f = sigma_f
         self.tol = tol
         self.priorities = priorities
@@ -117,53 +107,46 @@ class KMP:
         kernel : array-like of shape (n_features,n_features)
             The kernel matrix evaluated in the provided input pair.
         """
-        return self.sigma_f*np.exp(-(1/self.l)*(t1-t2)**2)[0]*np.eye(self.O)
+        dt = 0.001
+        t1dt = t1 + dt
+        t2dt = t2 + dt
+        ktt = np.exp(-self.sigma_f*(t1-t2)**2)
+        ktdt_tmp = np.exp(-self.sigma_f*(t1-t2dt)**2)
+        ktdt = (ktdt_tmp - ktt)/dt
+        kdtt_tmp = np.exp(-self.sigma_f*(t1dt-t2)**2)
+        kdtt = (kdtt_tmp - ktt)/dt
+        kdtdt_tmp = np.exp(-self.sigma_f*(t1dt-t2dt)**2)
+        kdtdt = (kdtdt_tmp - ktdt_tmp - kdtt_tmp + ktt)/dt**2
+        kernel_matrix = np.zeros((self.O,self.O))
+        dim = self.O//2
+        for i in range(dim):
+            kernel_matrix[i,i] = ktt
+            kernel_matrix[i, i+dim] = ktdt
+            kernel_matrix[i+dim, i] = kdtt
+            kernel_matrix[i+dim, i+dim] = kdtdt
+        return kernel_matrix
 
     def fit(self,
             X: ArrayLike,
             Y: ArrayLike,
             var: ArrayLike) -> None:
         """"Train" the model by computing the estimator matrices for the mean (K+lambda*sigma)^-1 and 
-        for the covariance (K+lambda_c*sigma)^-1. The n_trajectories axis of the arguments is 
-        considered only if the `self.priorities` parameter is not None.
+        for the covariance (K+lambda_c*sigma)^-1. 
 
         Parameters
         ----------
         X : array-like of shape (n_input_features,n_samples)
             Array of input vectors.
-        Y : array-like of shape (n_trajectories,n_output_features,n_samples)
+        Y : array-like of shape (n_output_features,n_samples)
             Array of output vectors
-        var : array-like of shape (n_trajectories,n_output_features,n_output_features,n_samples)
+        var : array-like of shape (n_output_features,n_output_features,n_samples)
             Array of covariance matrices
         """
-        if self.priorities is None:
-            # Single trajectory
-            self.s = X.copy()
-            self.xi = Y.copy()
-            self.sigma = var.copy()
-            self.O = self.xi.shape[0]
-            self.N = self.xi.shape[1]
-        else:
-            # Trajectory superposition
-            L = len(Y)
-            self.s = X.copy()
-            self.xi = np.zeros_like(Y[0])
-            self.sigma = np.zeros_like(var[0])
-            self.O = self.xi.shape[0]
-            self.N = self.xi.shape[1]
-            # Compute covariances
-            for n in range(self.N):
-                for l in range(L):
-                    self.sigma[:, :, n] += np.linalg.inv(
-                        var[l][:, :, n]/self.priorities[l](self.s[:, n]))
-                # Covariance = precision^-1
-                self.sigma[:, :, n] = np.linalg.inv(self.sigma[:, :, n])
-            # Compute means
-            for n in range(self.N):
-                for l in range(L):
-                    self.xi[:, n] += np.linalg.inv(var[l][:, :, n] /
-                                                   self.priorities[l](self.s[:, n]))@Y[l][:, n]
-                self.xi[:, n] = self.sigma[:, :, n]@self.xi[:, n]
+        self.s = X.copy()
+        self.xi = Y.copy()
+        self.sigma = var.copy()
+        self.O = self.xi.shape[0]
+        self.N = self.xi.shape[1]
         k_mean = np.zeros((self.N*self.O, self.N*self.O))
         k_covariance = np.zeros((self.N*self.O, self.N*self.O))
         # Construct the estimators
@@ -171,14 +154,11 @@ class KMP:
             for j in range(self.N):
                 kernel = self.__kernel_matrix(self.s[:, i], self.s[:, j])
                 k_mean[i*self.O:(i+1)*self.O, j*self.O:(j+1)*self.O] = kernel
-                k_covariance[i*self.O:(i+1)*self.O, j *
-                             self.O:(j+1)*self.O] = kernel
+                k_covariance[i*self.O:(i+1)*self.O, j * self.O:(j+1)*self.O] = kernel
                 if i == j:
                     # Add the regularization terms on the diagonal
-                    k_mean[j*self.O:(j+1)*self.O, i*self.O:(i+1)
-                           * self.O] = kernel + self.lambda1*self.sigma[:, :, i]
-                    k_covariance[j*self.O:(j+1)*self.O, i*self.O:(i+1)
-                                 * self.O] = kernel + self.lambda2*self.sigma[:, :, i]
+                    k_mean[j*self.O:(j+1)*self.O, i*self.O:(i+1) * self.O] = kernel + self.lambda1*self.sigma[:, :, i]
+                    k_covariance[j*self.O:(j+1)*self.O, i*self.O:(i+1) * self.O] = kernel + self.lambda2*self.sigma[:, :, i]
         self.__mean_estimator = np.linalg.inv(k_mean)
         self.__covariance_estimator = np.linalg.inv(k_covariance)
 
@@ -209,8 +189,7 @@ class KMP:
                 for h in range(self.O):
                     Y[i*self.O+h] = self.xi[h, i]
             xi[:, j] = k@self.__mean_estimator@Y
-            sigma[:, :, j] = (self.N/self.lambda2)*(self.__kernel_matrix(s[:, j],
-                                                                    s[:, j]) - k@self.__covariance_estimator@k.T)
+            sigma[:, :, j] = self.alpha*(self.__kernel_matrix(s[:, j], s[:, j]) - k@self.__covariance_estimator@k.T)
         self.kl_divergence = self.KL_divergence(self.xi, xi)
         self._logger.info(f'KMP Done. KL : {self.kl_divergence}')
         return xi, sigma

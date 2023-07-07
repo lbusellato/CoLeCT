@@ -338,6 +338,7 @@ class NatNetClient():
             The IP of the server.
         """
         # Get the network subnet range
+        self._logger.warn("Sever autodiscovery is broken, do not use!")
         interfaces = netifaces.interfaces()
         network = None
         for interface in interfaces:
@@ -418,7 +419,7 @@ class NatNetClient():
             packet_size = 0
         else:
             raise NotImplementedError(
-                f'Command id {command_id} not yet implemented.')
+                f'Command id {command_id} not implemented.')
         data = command_id.to_bytes(2, byteorder='little')
         data += packet_size.to_bytes(2, byteorder='little')
         data += command.encode('utf-8')
@@ -444,6 +445,7 @@ class NatNetClient():
             self._logger.error(f'Command socket address error: {e}')
             return None
         except socket.timeout as e:
+            self._logger.error(f'{e}')
             self._logger.error(f'Command socket timeout.')
             return None
         except socket.error as e:
@@ -564,16 +566,16 @@ class NatNetClient():
             try:
                 data, _ = self.command_socket.recvfrom(recv_buffer_size)
             except socket.herror as e:
-                self._logger.error(f'Command socket host error: {e}')
+                self._logger.error(f'Command thread function: Command socket host error: {e}')
                 return False
             except socket.gaierror as e:
-                self._logger.error(f'Command socket address error: {e}')
+                self._logger.error(f'Command thread function: Command socket address error: {e}')
                 return False
             except socket.timeout as e:
-                self._logger.error(f'Command socket timeout.')
+                self._logger.error(f'Command thread function: Command socket timeout.')
                 return False
             except socket.error as e:
-                self._logger.error(f'Command socket error: {e}')
+                self._logger.error(f'Command thread function: Command socket error: {e}')
                 return False
             if data:
                 self._process_message(data)
@@ -601,16 +603,16 @@ class NatNetClient():
             try:
                 data, _ = self.data_socket.recvfrom(recv_buffer_size)
             except socket.herror as e:
-                self._logger.error(f'Data socket host error: {e}')
+                self._logger.error(f'Data thread function: Data socket host error: {e}')
                 return False
             except socket.gaierror as e:
-                self._logger.error(f'Data socket address error: {e}')
+                self._logger.error(f'Data thread function: Data socket address error: {e}')
                 return False
             except socket.timeout as e:
-                self._logger.error(f'Data socket timeout.')
+                self._logger.error(f'Data thread function: Data socket timeout.')
                 return False
             except socket.error as e:
-                self._logger.error(f'Data socket error: {e}')
+                self._logger.error(f'Data thread function: Data socket error: {e}')
                 return False
             if data:
                 self._process_message(data)

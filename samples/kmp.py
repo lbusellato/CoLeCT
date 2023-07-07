@@ -28,7 +28,7 @@ def main():
     # Prepare the data for GMM/GMR
     H = len(datasets)  # Number of demonstrations
     N = len(datasets[0]) // subsample  # Length of each demonstration
-    dt = 0.001
+    dt = 0.1
     x = dt*np.arange(1, N + 1).reshape(1, -1)
     X = dt*np.tile(np.arange(N + 1), H).reshape(1, -1)
     Y_pos = np.vstack([p.position for dataset in datasets for p in dataset[::subsample]]).T
@@ -56,7 +56,7 @@ def main():
         gmm.fit(X, Y_torque)
         mu_torque, sigma_torque = gmm.predict(x)
     else:
-        if not exists(join(ROOT, 'trained_models/mu_pos.npy')):
+        if True or not exists(join(ROOT, 'trained_models/mu_pos.npy')):
             # GMM/GMR on the position
             gmm = GaussianMixtureModel(n_demos=H, n_components=12)
             gmm.fit(X, Y_pos)
@@ -142,7 +142,7 @@ def main():
         force = [0.1, 1, 0.01, 1]
         torque = [0.1, 1, 0.01, 1]
     # Train the KMPs with the best hyperparameters
-    if not exists(join(ROOT, 'trained_models/mu_pos_kmp.npy')):
+    if True or not exists(join(ROOT, 'trained_models/mu_pos_kmp.npy')):
         # KMP on the position
         kmp = KMP(lambda1=position[0], 
                 lambda2=position[1], 
