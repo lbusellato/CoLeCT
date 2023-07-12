@@ -104,7 +104,8 @@ class GaussianMixtureModel:
         self.n_demos_ = n_demos
         self.max_it = max_it
         self.tol = tol
-        self.reg_factor = reg_factor
+        self.init_diag_reg_factor = 1e-8
+        self.diag_reg_factor = 1e-4
         self.model_selection_tol = model_selection_tol
         self.rng = default_rng(random_state)
         self._logger = logging.getLogger(__name__)
@@ -134,18 +135,12 @@ class GaussianMixtureModel:
             # Univariate case
             X_cntr = X - mu
             pdf = X_cntr**2/sigma
-            try:
-                pdf = np.exp(-0.5*pdf)/np.sqrt(2*np.pi*np.abs(sigma))
-            except ZeroDivisionError:
-                pdf = np.exp(-0.5*pdf)/np.sqrt(2*np.pi*np.abs(sigma)+REALMIN)
+            pdf = np.exp(-0.5*pdf)/np.sqrt(2*np.pi*np.abs(sigma)+REALMIN)
         else:
             # Multivariate case
-            X_cntr = X - np.tile(mu, (self.n_demos_*self.n_samples_, 1)).T
-            pdf = np.sum(X_cntr.T@inv(sigma)*X_cntr.T, axis=1)
-            try:
-                pdf = np.exp(-0.5*pdf)/np.sqrt((2*np.pi) ** (self.n_features_)*np.abs(det(sigma)))
-            except ZeroDivisionError:
-                pdf = np.exp(-0.5*pdf)/np.sqrt((2*np.pi) ** (self.n_features_)*np.abs(det(sigma)) + REALMIN)
+            X_cntr = X.T - np.tile(mu.T, (self.n_demos_*self.n_samples_, 1))
+            pdf = np.sum(np.multiply(X_cntr@inv(sigma), X_cntr), axis=1)
+            pdf = np.exp(-0.5*pdf)/np.sqrt((2*np.pi) ** (self.n_features_)*np.abs(det(sigma)) + REALMIN)
         return pdf
 
     def __likelihood(self,
@@ -239,8 +234,7 @@ class GaussianMixtureModel:
                     # Compute priors, mean and the covariance matrix
                     priors[c] = len(ids)
                     means[:, c] = np.mean(X[:, ids].T, axis=0)
-                    covariances[:, :, c] = np.cov(
-                        X[:, ids]) + np.eye(self.n_features_)*self.reg_factor
+                    covariances[:, :, c] = np.cov(X[:, ids]) + np.eye(self.n_features_)*self.reg_factor
                 # Normalize the prior probabilities
                 priors = priors/np.sum(priors)
                 # Expectation-Maximization
@@ -250,10 +244,7 @@ class GaussianMixtureModel:
                     L = self.__likelihood(
                         X, covariances, means, priors, n_components)
                     # Pseudo posterior
-                    try:
-                        gamma = L/np.tile(np.sum(L, axis=0), (n_components, 1))
-                    except ZeroDivisionError:
-                        gamma = L/np.tile(np.sum(L, axis=0) + REALMIN, (n_components, 1))
+                    gamma = L/np.tile(np.sum(L, axis=0) + REALMIN, (n_components, 1))
                     gamma_mean = gamma / np.tile(np.sum(gamma, axis=1), (self.n_samples_*self.n_demos_, 1)).T
                     # Maximization step
                     for c in range(n_components):
@@ -283,19 +274,16 @@ class GaussianMixtureModel:
         # Setup the arrays for the priors, means and covariance matrices
         priors = np.zeros((self.n_components_))
         means = np.zeros((self.n_features_, self.n_components_))
-        covariances = np.zeros(
-            (self.n_features_, self.n_features_, self.n_components_))
+        covariances = np.zeros((self.n_features_, self.n_features_, self.n_components_))
         # Clusterization of the dataset
-        n_samples = int(X.shape[1]/self.n_demos_)
-        labels = np.tile((np.arange(n_samples)*self.n_components_/n_samples).astype(int), self.n_demos_)
+        labels = np.linspace(min(X[0,:]), max(X[0,:]), self.n_components_ + 1)
         # Initial guess for GMM
         for c in range(self.n_components_):
-            ids = [i for i, val in enumerate(labels) if val == c]
+            ids = [i for i, val in enumerate(X[0,:]) if val >= labels[c] and val < labels[c + 1]]
             # Compute priors, mean and the covariance matrix
             priors[c] = len(ids)
             means[:, c] = np.mean(X[:, ids].T, axis=0)
-            covariances[:, :, c] = np.cov(
-                X[:, ids]) + np.eye(self.n_features_)*self.reg_factor
+            covariances[:, :, c] = np.cov(X[:, ids]) + np.eye(self.n_features_)*self.diag_reg_factor
         # Normalize the prior probabilities
         priors = priors/np.sum(priors)
         # Expectation-Maximization
@@ -304,21 +292,18 @@ class GaussianMixtureModel:
             # Expectation step
             L = self.__likelihood(X, covariances, means, priors, self.n_components_)
             # Pseudo posterior
-            try:
-                gamma = L / np.tile(np.sum(L, axis=0), (self.n_components_, 1))
-            except ZeroDivisionError:
-                gamma = L / np.tile(np.sum(L, axis=0)+REALMIN, (self.n_components_, 1))
+            gamma = L / np.tile(np.sum(L, axis=0)+REALMIN, (self.n_components_, 1))
             gamma_mean = gamma / np.tile(np.sum(gamma, axis=1), (self.n_samples_*self.n_demos_, 1)).T
             # Maximization step
             for c in range(self.n_components_):
                 # Update priors
-                priors[c] = np.sum(gamma[c])/(self.n_samples_*self.n_demos_)
+                priors[c] = np.sum(gamma[c, :])/(self.n_samples_*self.n_demos_)
                 # Update mean
-                means[:, c] = X @ gamma_mean[c].T
+                means[:, c] = X @ gamma_mean[c, :].T
                 # Update covariance
-                X_cntr = X.T - np.tile(means[:, c], (self.n_samples_*self.n_demos_, 1))
-                sigma = X_cntr.T @ np.diag(gamma_mean[c]) @ X_cntr
-                covariances[:, :, c] = sigma + np.eye(self.n_features_)*self.reg_factor
+                X_cntr = X - np.tile(means[:, c], (self.n_samples_*self.n_demos_, 1)).T
+                sigma = X_cntr @ np.diag(gamma_mean[c, :]) @ X_cntr.T
+                covariances[:, :, c] = sigma + np.eye(self.n_features_)*self.diag_reg_factor
             # Average log likelihood
             LL[it] = np.mean(np.log(np.sum(L, axis=0)))
             # Check convergence
@@ -350,40 +335,27 @@ class GaussianMixtureModel:
         covariances : array-like of shape (n_input_features, n_input_features, n_samples)
             The array of covariance matrices.
         """
-        # Get the indexes of the input- and output-related quantities
-        I = X.shape[0]
         N = X.shape[1]
-        ts = list(range(I))  # Input indexes
-        s = list(range(I, self.covariances_.shape[0]))  # Output indexes
         # Setup the output arrays
-        means = np.zeros((len(s), N))
-        covariances = np.zeros((len(s), len(s), N))
+        means = np.zeros((self.n_output_features_, N))
+        covariances = np.zeros((self.n_output_features_, self.n_output_features_, N))
         # Perform regression
-        mu_tmp = np.zeros((len(s), self.n_components_))
-        beta = np.zeros((self.n_components_, N))
-        for i in range(N):
-            for t in ts:  # If the input is multidimensional, repeat the procedure for each dimension
-                # Compute posteriors (Calinon eq. 11)
-                for c in range(self.n_components_):
-                    beta[c, i] = self.priors_[
-                        c]*self.__pdf(X[t, i], self.covariances_[t, t, c], self.means_[t, c])
-                # Normalize
-                try:
-                    beta[:, i] = beta[:, i]/np.sum(beta[:, i])
-                except ZeroDivisionError:
-                    beta[:, i] = beta[:, i]/np.sum(beta[:, i]+REALMIN)
-                # Compute conditional means (Calinon eq. 10)
-                for c in range(self.n_components_):
-                    mu_tmp[:, c] = self.means_[s, c] + self.covariances_[s, t,
-                                                                         c]*(X[t, i]-self.means_[t, c])/self.covariances_[t, t, c]
-                    means[:, i] = means[:, i] + beta[c, i]*mu_tmp[:, c]
-                # Compute conditional covariances (Calinon eq. 10)
-                for c in range(self.n_components_):
-                    gmr_sigma = self.covariances_[np.ix_(s, s, [c])][:, :, 0] - (np.reshape(self.covariances_[
-                        s, t, c], (len(s), 1))/self.covariances_[t, t, c])*self.covariances_[t, s, c]
-                    covariances[:, :, i] = covariances[:, :, i] + \
-                        (beta[c, i]**2)*gmr_sigma
-                reg_factor = np.eye(len(s))*self.reg_factor
-                covariances[:, :, i] = covariances[:, :, i] + reg_factor
+        mu_tmp = np.zeros((self.n_output_features_, self.n_components_))
+        sigma_tmp = np.zeros((self.n_output_features_, self.n_output_features_, self.n_components_))
+        H = np.zeros((self.n_components_, N))
+        for t in range(N):
+            # Activation weight
+            for i in range(self.n_components_):
+                H[i, t] = self.priors_[i] * self.__pdf(X[:,t], self.covariances_[0,0,i], self.means_[0, i])
+            H[:,t] = H[:,t]/np.sum(H[:,t] + REALMIN)
+            # Conditional means
+            for i in range(self.n_components_):
+                mu_tmp[:,i] = self.means_[1:,i] + self.covariances_[1:,0,i]/self.covariances_[0,0,i] * (X[:,t]-self.means_[0,i])
+                means[:,t] += H[i,t]*mu_tmp[:,i]
+            # Conditional covariances
+            for i in range(self.n_components_):
+                sigma_tmp = self.covariances_[1:,1:,i]-self.covariances_[1:,0,i]/self.covariances_[0,0,i]*self.covariances_[0,1:,i]
+                covariances[:,:,t] += H[i,t]*(sigma_tmp + np.outer(mu_tmp[:,i],mu_tmp[:,i]))
+            covariances[:,:,t] += np.eye(self.n_output_features_)*self.diag_reg_factor - np.outer(means[:,t],means[:,t])
         self._logger.info('GMR done')
         return means, covariances

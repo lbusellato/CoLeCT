@@ -10,6 +10,8 @@ from src.datatypes import Quaternion
 from src.mixture import GaussianMixtureModel
 from src.kmp import KMP
 
+from matplotlib.patches import Ellipse
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -28,8 +30,8 @@ def main():
     H = len(datasets)  # Number of demonstrations
     N = len(datasets[0]) // subsample  # Length of each demonstration
     dt = 0.1
-    x = dt*np.arange(1, N + 1).reshape(1, -1)
-    X = dt*np.tile(np.arange(N + 1), H).reshape(1, -1)
+    x = dt*np.arange(1, N + 2).reshape(1, -1)
+    X = np.tile(x, H).reshape(1, -1)
     Y_pos = np.vstack([p.position for dataset in datasets for p in dataset[::subsample]]).T
     positions = np.split(copy.deepcopy(Y_pos), 10, axis=1)
     for position in positions:
@@ -42,23 +44,25 @@ def main():
     gmm = GaussianMixtureModel(n_demos=H, n_components=10)
     gmm.fit(X, Y)
     mu_pos, sigma_pos = gmm.predict(x)
+    test = np.transpose(sigma_pos, (2,0,1))
     # KMP on the position
-    dt = 0.01
-    x = dt*np.arange(1, N + 1).reshape(1, -1)
-    kmp = KMP(lambda1=0.5, lambda2=0.5, alpha=40, sigma_f=1, verbose=True)
+    kmp = KMP(l=0.5, alpha=40, sigma_f=1, verbose=True)
     kmp.fit(x, mu_pos, sigma_pos)
+    dt = 0.01
+    x = dt*np.arange(1, N + 2).reshape(1, -1)
     mu_pos_kmp, sigma_pos_kmp = kmp.predict(x) 
     # Plot everything
     fig, ax = plt.subplots(1, 3, figsize=(16,8))
     for dataset in datasets:
         plot_demo(ax, dataset[::subsample])
     dt = 0.001
-    t = dt*np.arange(1, N + 1).reshape(1, -1).flatten()
+    t = dt*np.arange(1, N + 2).reshape(1, -1).flatten()
     for i in range(3):
         # GMR
+        ax[i].errorbar(x=t, y=mu_pos[i, :], yerr=np.sqrt(sigma_pos[i,i,:]), color='grey', alpha=0.5)
         ax[i].plot(t, mu_pos[i, :], color='red', linestyle='dashed')
         # KMP
-        ax[i].errorbar(x=t, y=mu_pos_kmp[i, :], yerr=np.abs(sigma_pos_kmp[i,i,:]), color='yellow', alpha=0.25)
+        ax[i].errorbar(x=t, y=mu_pos_kmp[i, :], yerr=np.abs(sigma_pos_kmp[i,i,:]), color='yellow', alpha=0.5)
         ax[i].plot(t, mu_pos_kmp[i, :], color='green')
     fig.suptitle('Single point task - GMR and KMP')
     fig.tight_layout()
@@ -80,6 +84,7 @@ def plot_demo(ax, demonstration, linestyle='solid', label=''):
         ax[j].set_ylabel(y_labels[j])
         ax[j].grid(True)
         ax[j].set_xlabel('Time [s]')
+
 
 
 if __name__ == '__main__':

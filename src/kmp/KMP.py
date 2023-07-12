@@ -18,38 +18,29 @@ class KMP:
 
     Parameters
     ----------
-    lambda1 : int, default=0.5
-        Lambda regularization factor for the mean minimization problem.
-    lambda2 : float, default=0.5
-        Lambda regularization factor for the covariance minimization problem.
+    l : int, default=0.5
+        Lambda regularization factor for the minimization problem.
     alpha : float, default=40
         Coefficient for the covariance prediction.
     sigma_f : float, default=1
         Kernel coefficient.
     tol : float, default=0.0005
         Tolerance for the discrimination of conflicting points.
-    priorities : array-like of shape (n_trajectories,), default=None
-        Functions that map the input space into a priority value for trajectory superposition. The 
-        sum of all priority functions evaluated in the same (any) input must be one.
     verbose : bool
         Enable/disable verbose output.
     """
 
     def __init__(self,
-                 lambda1: float = 0.5,
-                 lambda2: float = 0.5,
+                 l: float = 0.5,
                  alpha: float = 40,
                  sigma_f: float = 1.0,
                  tol: float = 0.0005,
-                 priorities: ArrayLike = None,
                  verbose: bool = False) -> None:
         self.trained = False
-        self.lambda1 = lambda1
-        self.lambda2 = lambda2
+        self.l = l
         self.alpha = alpha
         self.sigma_f = sigma_f
         self.tol = tol
-        self.priorities = priorities
         self.kl_divergence = None
         self._logger = logging.getLogger(__name__)
         self._logger.setLevel(level=logging.DEBUG if verbose else logging.INFO)
@@ -128,7 +119,7 @@ class KMP:
 
     def fit(self,
             X: ArrayLike,
-            Y: ArrayLike,
+            mu: ArrayLike,
             var: ArrayLike) -> None:
         """"Train" the model by computing the estimator matrices for the mean (K+lambda*sigma)^-1 and 
         for the covariance (K+lambda_c*sigma)^-1. 
@@ -143,24 +134,22 @@ class KMP:
             Array of covariance matrices
         """
         self.s = X.copy()
-        self.xi = Y.copy()
+        self.xi = mu.copy()
         self.sigma = var.copy()
         self.O = self.xi.shape[0]
         self.N = self.xi.shape[1]
-        k_mean = np.zeros((self.N*self.O, self.N*self.O))
-        k_covariance = np.zeros((self.N*self.O, self.N*self.O))
+        k = np.zeros((self.N*self.O, self.N*self.O))
         # Construct the estimators
         for i in range(self.N):
             for j in range(self.N):
                 kernel = self.__kernel_matrix(self.s[:, i], self.s[:, j])
-                k_mean[i*self.O:(i+1)*self.O, j*self.O:(j+1)*self.O] = kernel
-                k_covariance[i*self.O:(i+1)*self.O, j * self.O:(j+1)*self.O] = kernel
+                k[i*self.O:(i+1)*self.O, j*self.O:(j+1)*self.O] = kernel
                 if i == j:
                     # Add the regularization terms on the diagonal
-                    k_mean[j*self.O:(j+1)*self.O, i*self.O:(i+1) * self.O] = kernel + self.lambda1*self.sigma[:, :, i]
-                    k_covariance[j*self.O:(j+1)*self.O, i*self.O:(i+1) * self.O] = kernel + self.lambda2*self.sigma[:, :, i]
-        self.__mean_estimator = np.linalg.inv(k_mean)
-        self.__covariance_estimator = np.linalg.inv(k_covariance)
+                    a = self.l*self.sigma[:, :, i]
+                    k[j*self.O:(j+1)*self.O, i*self.O:(i+1) * self.O] += self.l*self.sigma[:, :, i]
+        self._estimator = np.linalg.inv(k)
+        a = 0
 
     def predict(self, s: ArrayLike) -> Tuple[ArrayLike, ArrayLike]:
         """Carry out a prediction on the mean and covariance associated to the given input.
@@ -188,8 +177,8 @@ class KMP:
                   self.O] = self.__kernel_matrix(s[:, j], self.s[:, i])
                 for h in range(self.O):
                     Y[i*self.O+h] = self.xi[h, i]
-            xi[:, j] = k@self.__mean_estimator@Y
-            sigma[:, :, j] = self.alpha*(self.__kernel_matrix(s[:, j], s[:, j]) - k@self.__covariance_estimator@k.T)
+            xi[:, j] = k@self._estimator@Y
+            sigma[:, :, j] = self.alpha*(self.__kernel_matrix(s[:, j], s[:, j]) - k@self._estimator@k.T)
         self.kl_divergence = self.KL_divergence(self.xi, xi)
         self._logger.info(f'KMP Done. KL : {self.kl_divergence}')
         return xi, sigma
