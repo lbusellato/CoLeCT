@@ -1,8 +1,6 @@
 import logging
 import numpy as np
 
-from numpy.linalg import inv, det
-from numpy.random import default_rng
 from numpy.typing import ArrayLike
 from typing import Tuple
 
@@ -14,348 +12,158 @@ logging.basicConfig(
 
 REALMIN = np.finfo(np.float64).tiny  # To avoid division by 0
 
-
-class GaussianMixtureModel:
-    """A Gaussian Mixture Model representation that allows for the extraction of the probabilistic 
-    parameters of the underlying Gaussian mixture distribution to a set of demonstrations.
-
-    based on: "On Learning, Representing and Generalizing a Task in a Humanoid Robot", 
-    Calinon et al., 2007
-
-    Parameters
-    ----------
-    n_components : int, default=8
-        The number of mixture components. If `n_components_range` is not None, then all of its 
-        elements are tried, and the one producing the smallest BIC score is kept.
-
-    n_components_range : array_like, default=None
-        Specifies the values to try when computing the optimal number of Gaussian components.
-
-    n_demos : int, default=5
-        The number of demonstrations in the database.
-
-    max_it : int, default=100
-        Maximum number of iterations for the EM algorithm.
-
-    tol : float, default=1e-4
-        Convergence criterion (lower bound for the average log-likelihood) for the EM algorithm.
-        Must be strictly positive.
-
-    model_selection_tol : float, default=25
-        Tolerance for the selection of the optimal number of Gaussian components.    
-
-    random_state : int, default=None
-        Random seed for the random initialization of KMeans.
-
-    reg_factor : float, default=1e-4
-        Regularization factor added to the diagonal of the covariance matrices to ensure they are 
-        positive definite. Must be strictly positive.
-
-    Attributes
-    ----------
-    priors_ : array-like of shape (n_components,)
-        The priors of each component of the mixture.
-
-    means_ : array-like of shape (n_features, n_components)
-        The mean of each mixture component.
-
-    covariances_ : array-like of shape (n_features, n_features, n_components)
-        The covariance of each mixture component.
-
-    converged_ : bool
-        True when convergence was reached in fit(), False otherwise.
-
-    n_iter_ : int
-        Number of steps of EM to reach convergence.
-
-    n_input_features_ : int
-        The input space dimension seen during fit().
-
-    n_output_features_ : int
-        The output space dimension seen during fit().
-
-    n_features_ : int
-        The sum of n_input_features_ and n_output_features_.
-
-    n_components_ : int
-        The number of Gaussian components used during fit().
-
-    n_demos_ : int
-        The number of demonstrations seen during fit().
-
-    n_samples_ : int
-        The number of samples of each demonstration seen during fit().
-    """
-
+class GaussianMixtureModel():
     def __init__(self,
-                 n_components: int = 8,
-                 n_components_range: ArrayLike = None,
-                 n_demos: int = 5,
-                 max_it: int = 100,
-                 tol: float = 1e-4,
-                 model_selection_tol: float = 5,
-                 random_state: int = None,
-                 reg_factor: float = 1e-8) -> None:
-        # Class attributes
-        self.n_components_ = n_components
-        if n_components_range is None:
-            n_components_range = np.array([n_components])
-        self.n_components_range = n_components_range
-        self.n_demos_ = n_demos
-        self.max_it = max_it
-        self.tol = tol
-        self.init_diag_reg_factor = 1e-8
-        self.diag_reg_factor = 1e-4
-        self.model_selection_tol = model_selection_tol
-        self.rng = default_rng(random_state)
-        self._logger = logging.getLogger(__name__)
+                 n_components: int = 10,
+                 dt: float = 0.1) -> None:
+        self.n_components = n_components
+        self.dt = dt
+        self.logger = logging.getLogger(__name__)
 
-    def __pdf(self,
-              X: ArrayLike,
-              sigma: ArrayLike,
-              mu: ArrayLike) -> ArrayLike:
-        """Computes the Gaussian probability density function defined by the given mean and covariance,
-        evaluated in the given points.
-
+    def init(self, data: ArrayLike) -> None:
+        """Initialize the Gaussian Mixture Model by computing the priors, means and covariances of 
+        each Gaussian component.
+        
         Parameters
         ----------
-        X : int or array-like of shape (n_features,n_samples)
-            The data points in which the pdf is evaluated.
-        sigma : int or array-like of shape (n_features,n_features)
-            The variance or covariance matrix that defines the distribution.
-        mu : int or array-like of shape (n_features)
-            The mean vector that defines the distribution.
+        data : ArrayLike of shape (n_features, n_samples)
+            The dataset to initialize the GMM with.
+        """
+        n_features = data.shape[0]
+        diag_reg_factor = np.eye(n_features) * 1e-8
+        # Clustering data to initialize the GMM
+        timing_separation = np.linspace(min(data[0,:]), max(data[0,:]), self.n_components + 1)
+        # Initialize the arrays for the priors, means and covariances
+        self.priors = np.zeros((self.n_components))
+        self.means = np.zeros((n_features, self.n_components))
+        self.covariances = np.zeros((n_features, n_features, self.n_components))
+        # Initialize the GMM components
+        for i in range(self.n_components):
+            ids = [id for id, t in enumerate(data[0,:]) if t >= timing_separation[i] and t < timing_separation[i + 1]]
+            self.priors[i] = len(ids)
+            self.means[:, i] = np.mean(data[:, ids].T, axis=0)
+            self.covariances[:, :, i] = np.cov(data[:, ids])
+            # Add the regularization term to avoid numerical instability
+            self.covariances[:, :, i] += diag_reg_factor
+        # Normalize the priors
+        self.priors = self.priors / np.sum(self.priors)
+
+    def gaussPDF(self, data: ArrayLike, mean: ArrayLike, cov: ArrayLike) -> ArrayLike:
+        """Compute the Gaussian Probability Density Function for the Gaussian distribution with 
+        the given mean and covariance, evaluated in the given data points.
+        
+        Parameters
+        ----------
+        data : ArrayLike of shape (n_features, n_samples)
+            The dataset to evaluate the PDF in.
+        mean : ArrayLike of shape (n_features)
+            The mean of the Gaussian distribution.
+        cov : ArrayLike of shape (n_features, n_features)
+            The covariance of the Gaussian distribution.
 
         Returns
         -------
-        pdf : int or array-like of shape (n_features,n_samples)
-            The computed probability density function values.
+        pdf : ArrayLike of shape (n_samples)
+            The likelihoods of the dataset.
         """
-        if X.ndim <= 1:
-            # Univariate case
-            X_cntr = X - mu
-            pdf = X_cntr**2/sigma
-            pdf = np.exp(-0.5*pdf)/np.sqrt(2*np.pi*np.abs(sigma)+REALMIN)
+        if data.ndim == 1:
+            data_cntr = data - mean
+            pdf = (data_cntr**2)/cov
+            pdf = np.exp(-0.5*pdf)/np.sqrt(2*np.pi*np.abs(cov)+REALMIN)
         else:
-            # Multivariate case
-            X_cntr = X.T - np.tile(mu.T, (self.n_demos_*self.n_samples_, 1))
-            pdf = np.sum(np.multiply(X_cntr@inv(sigma), X_cntr), axis=1)
-            pdf = np.exp(-0.5*pdf)/np.sqrt((2*np.pi) ** (self.n_features_)*np.abs(det(sigma)) + REALMIN)
+            n_features, n_samples = data.shape
+            data_cntr = data.T - np.tile(mean.T, (n_samples, 1))
+            pdf = np.sum(np.linalg.solve(cov.conj().T, data_cntr.conj().T).conj().T*data_cntr, axis=1)
+            pdf = np.exp(-0.5*pdf)/np.sqrt(np.abs(np.linalg.det(cov))*(2*np.pi)**n_features + REALMIN)
         return pdf
 
-    def __likelihood(self,
-                     X: ArrayLike,
-                     sigma: ArrayLike,
-                     mu: ArrayLike,
-                     priors: ArrayLike,
-                     n_components: int) -> ArrayLike:
-        """Computes the likelihood of the Gaussian distribution defined by the given mean and covariance,
-        evaluated in the given points.
-
+    def likelihood(self, data: ArrayLike) -> ArrayLike:
+        """Compute the likelihood of the dataset.
+        
         Parameters
         ----------
-        X : int or array-like of shape (n_features,n_samples)
-            The data points in which the likelihood is evaluated.
-        sigma : int or array-like of shape (n_features,n_features,n_components)
-            The variance or covariance matrix that defines the distribution.
-        mu : int or array-like of shape (n_features,n_components)
-            The mean vector that defines the distribution.
-        priors : int or array-like of shape (n_components)
-            The prior probabilities of each mixture component.
-        n_components : int
-            The number of mixture components.
+        data : ArrayLike of shape (n_features, n_samples)
+            The dataset to evaluate the likelihood in.
 
         Returns
         -------
-        array-like of shape (n_samples,n_components)
-            The likelihood of each sample with respect to each Gaussian component.
+        likelihood : ArrayLike of shape (n_components, n_features)
+            The computed likelihood.
         """
-        return [priors[c]*self.__pdf(X, sigma[:, :, c], mu[:, c]) for c in range(n_components)]
+        likelihood = np.zeros((self.n_components, data.shape[1]))
+        for i in range(self.n_components):
+            likelihood[i, :] = self.priors[i]*self.gaussPDF(data, self.means[:, i], self.covariances[:,:,i])
+        return likelihood
 
-    def __bic(self, X: ArrayLike, L: float, K: int) -> float:
-        """Computes the Bayesian Information Criterion (BIC) score for the given data and number of
-        Gaussian components.
-
+    def fit(self, data: ArrayLike) -> None:
+        """Use Expectation-Maximization (EM) to train the GMM.
+        
         Parameters
         ----------
-        X : array-like of shape (n_input_features, n_samples)
-            The array of input vectors.
-        L : float
-            The average log-likelihood of the model.
-        K : int
-            The number of Gaussian components.
-
-        Returns
-        -------
-        float
-            The computed BIC score.
+        data : ArrayLike of shape (n_features, n_samples)
+            The dataset to train the model on.
         """
-        N = X.shape[1]
-        D = X.shape[0]
-        # Number of parameters
-        n_p = (K-1)+K*(D+0.5*D*(D+1))
-        return -2*L*N + n_p*np.log(N)
-
-    def fit(self, X: ArrayLike, Y: ArrayLike) -> None:
-        """Fit the model using the Expectation-Maximization algorithm.
-
-        Parameters
-        ----------
-        X : array-like of shape (n_input_features, n_samples)
-            The array of input vectors.
-        Y : array-like of shape (n_output_features, n_samples)
-            The array of output vectors.
-        """
-        # Set the relevant attributes
-        self.n_input_features_ = X.shape[0]
-        self.n_output_features_ = Y.shape[0]
-        self.n_features_ = self.n_input_features_ + self.n_output_features_
-        self.n_samples_ = int(Y.shape[1]/self.n_demos_)
-        # Setup the dataset
-        X = np.vstack([X, Y])
-        # Figure out the optimal number of mixture components
-        self.converged_ = False
-        # Model selection
-        bics = []
-        ddbics = []
-        if len(self.n_components_range) > 1:
-            for n_components in self.n_components_range:
-                # Setup the arrays for the priors, means and covariance matrices
-                priors = np.zeros((n_components))
-                means = np.zeros((self.n_features_, n_components))
-                covariances = np.zeros(
-                    (self.n_features_, self.n_features_, n_components))
-                # Clusterization of the dataset
-                n_samples = int(X.shape[1]/self.n_demos_)
-                labels = np.tile((np.arange(n_samples)*n_components/n_samples).astype(int), self.n_demos_)
-                # Initial guess for GMM
-                for c in range(n_components):
-                    ids = [i for i, val in enumerate(labels) if val == c]
-                    # Compute priors, mean and the covariance matrix
-                    priors[c] = len(ids)
-                    means[:, c] = np.mean(X[:, ids].T, axis=0)
-                    covariances[:, :, c] = np.cov(X[:, ids]) + np.eye(self.n_features_)*self.reg_factor
-                # Normalize the prior probabilities
-                priors = priors/np.sum(priors)
-                # Expectation-Maximization
-                LL = np.zeros(self.max_it)
-                for it in range(self.max_it):
-                    # Expectation step
-                    L = self.__likelihood(
-                        X, covariances, means, priors, n_components)
-                    # Pseudo posterior
-                    gamma = L/np.tile(np.sum(L, axis=0) + REALMIN, (n_components, 1))
-                    gamma_mean = gamma / np.tile(np.sum(gamma, axis=1), (self.n_samples_*self.n_demos_, 1)).T
-                    # Maximization step
-                    for c in range(n_components):
-                        # Update priors
-                        priors[c] = np.sum(gamma[c]) / (self.n_samples_*self.n_demos_)
-                        # Update mean
-                        means[:, c] = X @ gamma_mean[c].T
-                        # Update covariance
-                        X_cntr = X.T - np.tile(means[:, c], (self.n_samples_*self.n_demos_, 1))
-                        sigma = X_cntr.T @ np.diag(gamma_mean[c]) @ X_cntr
-                        covariances[:, :, c] = sigma + np.eye(self.n_features_)*self.reg_factor
-                    # Average log likelihood
-                    LL[it] = np.mean(np.log(np.sum(L, axis=0)))
-                    # Check convergence
-                    if it > 0 and (it >= self.max_it or np.abs(LL[it]-LL[it-1]) < self.tol):
-                        bics.append(self.__bic(X, LL[it], n_components))
-                        if len(bics) > 1:
-                            ddbics = np.gradient(np.gradient(bics))
-                        break
-        if len(ddbics) > 0:
-            self.ddbics = np.abs(ddbics)
-            n_components = np.argwhere(np.abs(ddbics) <= self.model_selection_tol)
-            if n_components.shape[0] != 0:
-                self.n_components_ = self.n_components_range[n_components[0]][0]
-            else:
-                self.n_components_ = self.n_components_range[np.argmin(np.abs(ddbics))]
-        # Setup the arrays for the priors, means and covariance matrices
-        priors = np.zeros((self.n_components_))
-        means = np.zeros((self.n_features_, self.n_components_))
-        covariances = np.zeros((self.n_features_, self.n_features_, self.n_components_))
-        # Clusterization of the dataset
-        labels = np.linspace(min(X[0,:]), max(X[0,:]), self.n_components_ + 1)
-        # Initial guess for GMM
-        for c in range(self.n_components_):
-            ids = [i for i, val in enumerate(X[0,:]) if val >= labels[c] and val < labels[c + 1]]
-            # Compute priors, mean and the covariance matrix
-            priors[c] = len(ids)
-            means[:, c] = np.mean(X[:, ids].T, axis=0)
-            covariances[:, :, c] = np.cov(X[:, ids]) + np.eye(self.n_features_)*self.diag_reg_factor
-        # Normalize the prior probabilities
-        priors = priors/np.sum(priors)
-        # Expectation-Maximization
-        LL = np.zeros(self.max_it)
-        for it in range(self.max_it):
-            # Expectation step
-            L = self.__likelihood(X, covariances, means, priors, self.n_components_)
-            # Pseudo posterior
-            gamma = L / np.tile(np.sum(L, axis=0)+REALMIN, (self.n_components_, 1))
-            gamma_mean = gamma / np.tile(np.sum(gamma, axis=1), (self.n_samples_*self.n_demos_, 1)).T
-            # Maximization step
-            for c in range(self.n_components_):
-                # Update priors
-                priors[c] = np.sum(gamma[c, :])/(self.n_samples_*self.n_demos_)
-                # Update mean
-                means[:, c] = X @ gamma_mean[c, :].T
-                # Update covariance
-                X_cntr = X - np.tile(means[:, c], (self.n_samples_*self.n_demos_, 1)).T
-                sigma = X_cntr @ np.diag(gamma_mean[c, :]) @ X_cntr.T
-                covariances[:, :, c] = sigma + np.eye(self.n_features_)*self.diag_reg_factor
-            # Average log likelihood
-            LL[it] = np.mean(np.log(np.sum(L, axis=0)))
-            # Check convergence
-            if it > 0 and (it >= self.max_it or np.abs(LL[it]-LL[it-1]) < self.tol):
-                self._logger.info(
-                    f'EM converged in {it} iterations. n_components: {self.n_components_}, BIC: {self.__bic(X,LL[it],self.n_components_)}')
-                self.priors_ = priors
-                self.covariances_ = covariances
-                self.means_ = means
-                self.converged_ = True
-                self.n_iter = it
+        self.n_features, n_samples = data.shape
+        min_it = 5
+        max_it = 100
+        tol = 1e-4
+        diag_reg_factor = np.eye(self.n_features)*1e-4
+        LL = np.zeros((max_it))
+        converged = False
+        for it in range(max_it):
+            # E step
+            L = self.likelihood(data)
+            gamma = L / np.tile(np.sum(L, axis=0) + REALMIN, (self.n_components, 1))
+            gamma2 = gamma / np.tile(np.sum(gamma, axis=1, keepdims=True) + REALMIN, (1, n_samples))
+            # M step
+            for i in range(self.n_components):
+                self.priors[i] = np.sum(gamma[i, :])/n_samples
+                self.means[:, i] = np.dot(data, gamma2[i, :].T)
+                data_cntr = data - np.tile(self.means[:, i].reshape(-1,1), (1, n_samples))
+                self.covariances[:, :, i] = np.dot(np.dot(data_cntr, np.diag(gamma2[i, :])), data_cntr.T) + diag_reg_factor
+            # Average log-likelihood
+            LL[it] = np.sum(np.log(np.sum(L, axis=0))) / n_samples
+            if it > min_it and (LL[it] - LL[it-1] < tol or it == max_it - 1):
+                self.logger.info(f"EM converged in {it} steps.")
+                converged = True
                 break
-        if not self.converged_:
-            raise RuntimeError("EM algorithm did not converge")
+        if not converged:
+            self.logger.info("EM did not converge.")
 
-    def predict(self, X: ArrayLike) -> Tuple[ArrayLike, ArrayLike]:
-        """Predict the expected output using Gaussian Mixture Regression.
-
+    def predict(self, data: ArrayLike) -> Tuple[ArrayLike, ArrayLike]:
+        """Use Gaussian Mixture Regression to predict mean and covariance of the given inputs
+        
         Parameters
         ----------
-        X : array-like of shape (n_input_features, n_samples)
-            The array of input vectors.
+        data : ArrayLike of shape (n_input_features, n_samples)
 
         Returns
         -------
-        means : array-like of shape (n_input_features, n_samples)
-            The array of mean vectors.
-
-        covariances : array-like of shape (n_input_features, n_input_features, n_samples)
-            The array of covariance matrices.
+        means : ArrayLike of shape (n_output_features, n_samples)
+            The mean vectors associated to each input point.
+        covariances : ArrayLike of shape (n_output_features, n_output_features, n_samples)
+            The covariance matrices associated to each input point.
         """
-        N = X.shape[1]
-        # Setup the output arrays
-        means = np.zeros((self.n_output_features_, N))
-        covariances = np.zeros((self.n_output_features_, self.n_output_features_, N))
-        # Perform regression
-        mu_tmp = np.zeros((self.n_output_features_, self.n_components_))
-        sigma_tmp = np.zeros((self.n_output_features_, self.n_output_features_, self.n_components_))
-        H = np.zeros((self.n_components_, N))
-        for t in range(N):
+        n_input_features, n_samples = data.shape
+        n_output_features = self.n_features - n_input_features
+        diag_reg_factor = np.eye(n_output_features)*1e-8
+        # Initialize needed arrays
+        mu_tmp = np.zeros((n_output_features, self.n_components))
+        means = np.zeros((n_output_features, n_samples))
+        covariances = np.zeros((n_output_features, n_output_features, n_samples))
+        H = np.zeros((self.n_components, n_samples))
+        for t in range(n_samples):
             # Activation weight
-            for i in range(self.n_components_):
-                H[i, t] = self.priors_[i] * self.__pdf(X[:,t], self.covariances_[0,0,i], self.means_[0, i])
-            H[:,t] = H[:,t]/np.sum(H[:,t] + REALMIN)
+            for i in range(self.n_components):
+                H[i,t] = self.priors[i] * self.gaussPDF(data[:,t], self.means[0,i], self.covariances[0,0,i])
+            H[:,t] /= np.sum(H[:,t] + REALMIN)
             # Conditional means
-            for i in range(self.n_components_):
-                mu_tmp[:,i] = self.means_[1:,i] + self.covariances_[1:,0,i]/self.covariances_[0,0,i] * (X[:,t]-self.means_[0,i])
+            for i in range(self.n_components):
+                mu_tmp[:,i] = self.means[1:,i] + (self.covariances[1:,0,i]/self.covariances[0,0,i])*(data[:,t]-self.means[0,i])
                 means[:,t] += H[i,t]*mu_tmp[:,i]
             # Conditional covariances
-            for i in range(self.n_components_):
-                sigma_tmp = self.covariances_[1:,1:,i]-self.covariances_[1:,0,i]/self.covariances_[0,0,i]*self.covariances_[0,1:,i]
+            for i in range(self.n_components):
+                sigma_tmp = self.covariances[1:,1:,i] - (self.covariances[1:,0,i]/self.covariances[0,0,i]).reshape(-1,1)@self.covariances[0,1:,i].reshape(-1,1).T
                 covariances[:,:,t] += H[i,t]*(sigma_tmp + np.outer(mu_tmp[:,i],mu_tmp[:,i]))
-            covariances[:,:,t] += np.eye(self.n_output_features_)*self.diag_reg_factor - np.outer(means[:,t],means[:,t])
-        self._logger.info('GMR done')
+            covariances[:,:,t] += diag_reg_factor - np.outer(means[:,t],means[:,t])
         return means, covariances

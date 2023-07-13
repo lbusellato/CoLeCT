@@ -1,3 +1,4 @@
+import copy
 import logging
 import math
 import numpy as np
@@ -121,8 +122,7 @@ class KMP:
             X: ArrayLike,
             mu: ArrayLike,
             var: ArrayLike) -> None:
-        """"Train" the model by computing the estimator matrices for the mean (K+lambda*sigma)^-1 and 
-        for the covariance (K+lambda_c*sigma)^-1. 
+        """Train the model by computing the estimator matrix inv(K+lambda*sigma).
 
         Parameters
         ----------
@@ -133,24 +133,22 @@ class KMP:
         var : array-like of shape (n_output_features,n_output_features,n_samples)
             Array of covariance matrices
         """
-        self.s = X.copy()
-        self.xi = mu.copy()
-        self.sigma = var.copy()
+        self.s = copy.deepcopy(X)
+        self.xi = copy.deepcopy(mu)
+        self.sigma = copy.deepcopy(var)
         self.O = self.xi.shape[0]
         self.N = self.xi.shape[1]
         k = np.zeros((self.N*self.O, self.N*self.O))
-        # Construct the estimators
+        # Construct the estimator
         for i in range(self.N):
             for j in range(self.N):
                 kernel = self.__kernel_matrix(self.s[:, i], self.s[:, j])
                 k[i*self.O:(i+1)*self.O, j*self.O:(j+1)*self.O] = kernel
                 if i == j:
                     # Add the regularization terms on the diagonal
-                    a = self.l*self.sigma[:, :, i]
                     k[j*self.O:(j+1)*self.O, i*self.O:(i+1) * self.O] += self.l*self.sigma[:, :, i]
         self._estimator = np.linalg.inv(k)
-        a = 0
-
+        
     def predict(self, s: ArrayLike) -> Tuple[ArrayLike, ArrayLike]:
         """Carry out a prediction on the mean and covariance associated to the given input.
 
@@ -173,36 +171,10 @@ class KMP:
             k = np.zeros((self.O, self.N*self.O))
             Y = np.zeros(self.N*self.O)
             for i in range(self.N):
-                k[:, i*self.O:(i+1) *
-                  self.O] = self.__kernel_matrix(s[:, j], self.s[:, i])
+                k[:, i*self.O:(i+1)*self.O] = self.__kernel_matrix(s[:, j], self.s[:, i])
                 for h in range(self.O):
                     Y[i*self.O+h] = self.xi[h, i]
-            xi[:, j] = k@self._estimator@Y
+            xi[:, j] = np.squeeze((k@self._estimator@Y.reshape(-1,1)))
             sigma[:, :, j] = self.alpha*(self.__kernel_matrix(s[:, j], s[:, j]) - k@self._estimator@k.T)
-        self.kl_divergence = self.KL_divergence(self.xi, xi)
-        self._logger.info(f'KMP Done. KL : {self.kl_divergence}')
+        self._logger.info(f'KMP Done.')
         return xi, sigma
-
-    def KL_divergence(self, p: ArrayLike, q: ArrayLike) -> float:
-        """Computes the Kullback-Leibler divergence for the model.
-
-        Parameters
-        ----------
-
-        p : ArrayLike of shape (n_features, n_samples)
-            The GMR trajectory.
-        q : ArrayLike of shape (n_features, n_samples)
-            The KMP trajectory.
-
-        Returns
-        -------
-        float
-            The computed KL divergence.
-        """
-        p_norm = p / np.sum(p, axis=0)
-        q_norm = q / np.sum(q, axis=0)  
-        # Some terms might produce nan values, fix that
-        epsilon = 1e-10  
-        p_norm[p_norm < epsilon] = epsilon
-        q_norm[q_norm < epsilon] = epsilon  
-        return np.sum(p_norm * np.log(np.divide(p_norm, q_norm)))

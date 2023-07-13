@@ -1,10 +1,11 @@
 contourpy==1.0.7
 control==0.9.4
 cycler==0.11.0
-fastdtw==0.3.4
 fonttools==4.39.4
 future==0.18.3
 h5py==3.8.0
+importlib-metadata==6.8.0
+importlib-resources==6.0.0
 iso8601==1.1.0
 joblib==1.2.0
 kiwisolver==1.4.4
@@ -26,3 +27,4 @@ tbb==2021.9.0
 tbb-devel==2021.9.0
 threadpoolctl==3.1.0
 tslearn==0.5.3.2
+zipp==3.16.0
