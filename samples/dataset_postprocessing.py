@@ -42,13 +42,13 @@ def main():
     # Process the .csv files into .npy files
     path = 'demonstrations/single_point_task'
     regex = r'single_point_task(\d{2})\.csv'
-    create_dataset(path, demonstration_regex=regex)
+    #create_dataset(path, demonstration_regex=regex)
     # Trim any leading or trailing force-only samples
-    trim_datasets(path)
+    #trim_datasets(path)
     # Fill in the force-only samples by linearly interpolating the poses
     interpolate_datasets(path)
     # Align temporally the datasets with Soft-DTW
-    align_datasets(path)
+    #align_datasets(path)
     # Load the processed datasets
     processed = load_datasets(path)
     # Plot everything

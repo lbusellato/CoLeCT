@@ -30,30 +30,30 @@ def create_dataset(demonstrations_path: str = '', demonstration_regex: str = r''
         t_dt = 0.001
         with open(join(demonstrations_path, file)) as csv_file:
             reader = csv.DictReader(csv_file)
-            for row in reader:
-                t = t_cnt*t_dt  # float(row['timestamp'])
-                t_cnt += 1
-                x = float(row['pos_x'])
-                y = float(row['pos_y'])
-                z = float(row['pos_z'])
-                w = float(row['quat_w'])
-                wx = float(row['quat_x'])
-                wy = float(row['quat_y'])
-                wz = float(row['quat_z'])
-                fx = float(row['force_x'])
-                fy = float(row['force_y'])
-                fz = float(row['force_z'])
-                mx = float(row['torque_x'])
-                my = float(row['torque_y'])
-                mz = float(row['torque_z'])
-                if not qa:
-                    # First sample, recover the auxiliary quaternion
-                    qa = Quaternion.from_array([w, wx, wy, wz])
-                quat = Quaternion.from_array([w, wx, wy, wz])
-                # Project to euclidean space
-                quat_eucl = (quat*~qa).log()
-                out.append(Point(t, x, y, z, quat, quat_eucl, fx, fy, fz, mx, my, mz))
-                prev_quat = quat
+            for j, row in enumerate(reader):
+                if j % 2 == 0:
+                    t = t_cnt*t_dt  # float(row['timestamp'])
+                    t_cnt += 1
+                    x = float(row['pos_x'])
+                    y = float(row['pos_y'])
+                    z = float(row['pos_z'])
+                    w = float(row['quat_w'])
+                    wx = float(row['quat_x'])
+                    wy = float(row['quat_y'])
+                    wz = float(row['quat_z'])
+                    fx = float(row['force_x'])
+                    fy = float(row['force_y'])
+                    fz = float(row['force_z'])
+                    mx = float(row['torque_x'])
+                    my = float(row['torque_y'])
+                    mz = float(row['torque_z'])
+                    if not qa:
+                        # First sample, recover the auxiliary quaternion
+                        qa = Quaternion.from_array([w, wx, wy, wz])
+                    quat = Quaternion.from_array([w, wx, wy, wz])
+                    # Project to euclidean space
+                    quat_eucl = (quat*~qa).log()
+                    out.append(Point(t, x, y, z, quat, quat_eucl, fx, fy, fz, mx, my, mz))
             np.save(join(ROOT, demonstrations_path, f'dataset{i:02d}.npy'), out)
             out = []
 
