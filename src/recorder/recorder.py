@@ -21,9 +21,9 @@ class Recorder():
     def __init__(self, verbose: bool = False) -> None:
         self._logger = logging.getLogger(__name__)
         self._logger.setLevel(level=logging.DEBUG if verbose else logging.INFO)
-        self.nnc = NatNetClient(server_address='10.85.15.15',
+        self.nnc = NatNetClient(server_address='10.85.15.149',
                                 rigid_body_listener=self.nnc_callback)
-        #self.hex12 = HEX12(callback=self.hex12_callback)
+        self.hex12 = HEX12(callback=self.hex12_callback)
         self.reading = np.zeros(14)
         # Prepare the csv file
         recording_path = join(ROOT, 'recordings')
@@ -33,7 +33,7 @@ class Recorder():
         self.start_time = time.time()
 
     def run(self) -> int:
-        help = 'Command list:\n\tr - Start recording\n\tq - Quit\n'
+        help = 'Command list:\n\tr - Start recording\n\ts - Stop recording\n\tq - Quit\n'
         self._logger.info(help)
         cmd = ''
         while cmd != 'r':
@@ -47,14 +47,27 @@ class Recorder():
         with open(self.recording_file, 'x') as f:
             writer = csv.writer(f)
             writer.writerow(header)
-        #self.hex12.start()
+        self.hex12.start()
         self.nnc.start()
         self.recording = True
         cmd = ''
+        new_rec = False
         while cmd != 'q':
             cmd = input()
             if cmd == 'r':
                 self.recording = True
+                if new_rec:
+                    recording_path = join(ROOT, 'recordings')
+                    recording_filename = time.strftime("%Y%m%d-%H%M%S") + '.csv'
+                    self.recording_file = join(recording_path, recording_filename)
+                    self.start_time = time.time()
+                    with open(self.recording_file, 'x') as f:
+                        writer = csv.writer(f)
+                        writer.writerow(header)
+            elif cmd == 's':
+                self.reading = np.zeros(14)
+                self.recording = False
+                new_rec = True
 
     def hex12_callback(self, wrench: List[float]) -> None:
         """Handles recording force and torque data.

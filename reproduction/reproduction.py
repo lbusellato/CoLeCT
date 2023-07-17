@@ -7,8 +7,8 @@ from os.path import join, dirname, abspath
 
 ROOT = dirname(dirname(abspath(__file__)))
 
-#rtde_c = rtde_control.RTDEControlInterface("172.17.0.2")
-#rtde_r = rtde_receive.RTDEReceiveInterface("172.17.0.2")
+rtde_c = rtde_control.RTDEControlInterface("172.17.0.2")
+rtde_r = rtde_receive.RTDEReceiveInterface("172.17.0.2")
 
 # Pull the KMP trajectories
 pos = np.load(join(ROOT, 'trained_models/mu_pos_kmp.npy'))

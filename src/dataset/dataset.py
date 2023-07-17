@@ -52,11 +52,9 @@ def create_dataset(demonstrations_path: str = '', demonstration_regex: str = r''
                 quat = Quaternion.from_array([w, wx, wy, wz])
                 # Project to euclidean space
                 quat_eucl = (quat*~qa).log()
-                out.append(
-                    Point(t, x, y, z, quat, quat_eucl, fx, fy, fz, mx, my, mz))
+                out.append(Point(t, x, y, z, quat, quat_eucl, fx, fy, fz, mx, my, mz))
+                prev_quat = quat
             np.save(join(ROOT, demonstrations_path, f'dataset{i:02d}.npy'), out)
-            # Also save a raw copy of the data
-            np.save(join(ROOT, demonstrations_path, f'postprocessing{i:02d}.npy'), out)
             out = []
 
 

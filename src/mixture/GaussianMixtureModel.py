@@ -19,6 +19,7 @@ class GaussianMixtureModel():
         self.n_components = n_components
         self.dt = dt
         self.logger = logging.getLogger(__name__)
+        self.initialized = False
 
     def init(self, data: ArrayLike) -> None:
         """Initialize the Gaussian Mixture Model by computing the priors, means and covariances of 
@@ -47,6 +48,7 @@ class GaussianMixtureModel():
             self.covariances[:, :, i] += diag_reg_factor
         # Normalize the priors
         self.priors = self.priors / np.sum(self.priors)
+        self.initialized = True
 
     def gaussPDF(self, data: ArrayLike, mean: ArrayLike, cov: ArrayLike) -> ArrayLike:
         """Compute the Gaussian Probability Density Function for the Gaussian distribution with 
@@ -103,6 +105,8 @@ class GaussianMixtureModel():
         data : ArrayLike of shape (n_features, n_samples)
             The dataset to train the model on.
         """
+        if not self.initialized:
+            self.init(data)
         self.n_features, n_samples = data.shape
         min_it = 5
         max_it = 100

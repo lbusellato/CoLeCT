@@ -29,6 +29,9 @@ class RigidBody:
         self._id = id
         self._pos = pos
         self._rot = rot
+        self._rb_marker_list = None
+        self._error = None
+        self._tracking_valid = None
 
     def as_string(self) -> str:
         out_str = f'\tID: {self.id}\n'
