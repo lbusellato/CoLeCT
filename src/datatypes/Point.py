@@ -73,7 +73,7 @@ class Point():
         return np.concatenate((self.force, self.torque))
 
     def as_array(self):
-        return np.array([self.x, self.y, self.z, self.rot_eucl[0], self.rot_eucl[1], self.rot_eucl[2], self.fx, self.fy, self.fz, self.mx, self.my, self.mz])
+        return np.array([self.timestamp, self.x, self.y, self.z, self.rot.as_array()[0], self.rot.as_array()[1], self.rot.as_array()[2], self.rot.as_array()[3], self.rot_eucl[0], self.rot_eucl[1], self.rot_eucl[2], self.fx, self.fy, self.fz, self.mx, self.my, self.mz])
     
     @classmethod
     def from_array(cls, array):

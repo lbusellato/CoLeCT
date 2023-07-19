@@ -115,11 +115,8 @@ def main():
     t_kmp = np.arange(kmp_dt, demo_dura + kmp_dt, kmp_dt)
     for i in range(3):
         # GMR
-        ax[0, i].plot(t_gmr, mu_pos[i, :], color='red', linestyle='dashed')
         ax[0, i].errorbar(x=t_gmr, y=mu_pos[i, :], yerr=np.sqrt(sigma_pos[i,i,:]), color='grey', alpha=0.25)
-        ax[1, i].plot(t_gmr, quats[i + 1, :], color='red', linestyle='dashed')
         ax[1, i].errorbar(x=t_gmr, y=mu_rot[i, :], yerr=np.sqrt(sigma_rot[i,i,:]), color='grey', alpha=0.25)
-        ax[2, i].plot(t_gmr, mu_force[i, :], color='red', linestyle='dashed')
         ax[2, i].errorbar(x=t_gmr, y=mu_force[i, :], yerr=np.sqrt(sigma_force[i,i,:]), color='grey', alpha=0.25)
         # KMP
         """ax[0, i].errorbar(x=t_kmp, y=mu_pos_kmp[i, :], yerr=sigma_pos_kmp[i,i,:], color='yellow', alpha=0.25)
@@ -135,7 +132,7 @@ def main():
 
 def plot_demo(ax, demonstration, linestyle='solid', label=''):
     # Plot all the data in a demonstration
-    time = np.arange(0.1, 0.1*(len(demonstration) + 1), 0.1)
+    time = np.arange(0.1, 11.8 + 0.1, 0.1)
     x = [p.x for p in demonstration]
     y = [p.y for p in demonstration]
     z = [p.z for p in demonstration]

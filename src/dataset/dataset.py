@@ -57,7 +57,6 @@ def create_dataset(demonstrations_path: str = '', demonstration_regex: str = r''
             np.save(join(ROOT, demonstrations_path, f'dataset{i:02d}.npy'), out)
             out = []
 
-
 def trim_datasets(datasets_path: str = '') -> None:
     """Remove any leading or trailing force-only samples in order to allow interpolating between the rest.
 
@@ -81,10 +80,8 @@ def trim_datasets(datasets_path: str = '') -> None:
 def as_array(dataset):
     return np.vstack([point.as_array() for point in dataset])
 
-
 def from_array(array):
    return [Point.from_array(row) for row in array.T]
-
 
 def interpolate_datasets(datasets_path: str = ''):
     """Fill in the force-only samples with a linear interpolation between the previous and next full samples.

@@ -24,7 +24,7 @@ def plot_demo(ax, demonstration, linewidth=1.0, color='blue'):
     tz = [p.mz for p in demonstration]
     data = np.array([time, x, y, z, qx, qy, qz, fx, fy, fz, tx, ty, tz])
     # Get rid of empty pose rows
-    data = np.array([row for row in data.T if not all(element == 0 for element in row[1:4])]).T
+    #data = np.array([row for row in data.T if not all(element == 0 for element in row[1:4])]).T
     y_labels = ['x [m]', 'y [m]', 'z [m]',
                 '$q_x$', '$q_y$', '$q_z$',
                 '$F_x$ [N]', '$F_y$ [N]', '$F_z$ [N]',
@@ -42,13 +42,13 @@ def main():
     # Process the .csv files into .npy files
     path = 'demonstrations/single_point_task'
     regex = r'single_point_task(\d{2})\.csv'
-    #create_dataset(path, demonstration_regex=regex)
+    create_dataset(path, demonstration_regex=regex)
     # Trim any leading or trailing force-only samples
-    #trim_datasets(path)
+    trim_datasets(path)
     # Fill in the force-only samples by linearly interpolating the poses
     interpolate_datasets(path)
     # Align temporally the datasets with Soft-DTW
-    #align_datasets(path)
+    align_datasets(path)
     # Load the processed datasets
     processed = load_datasets(path)
     # Plot everything
