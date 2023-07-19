@@ -23,6 +23,7 @@ def create_dataset(demonstrations_path: str = '', demonstration_regex: str = r''
     """
     demonstrations_path = join(ROOT, demonstrations_path)
     files = [f for f in listdir(demonstrations_path) if re.match(demonstration_regex, f) is not None]
+    files.sort()
     qa = []
     out = []
     for i, file in enumerate(files):
@@ -68,6 +69,7 @@ def trim_datasets(datasets_path: str = '') -> None:
     datasets_path = join(ROOT, datasets_path)
     regex = r'dataset(\d{2})\.npy'
     datasets = [f for f in listdir(datasets_path) if re.match(regex, f) is not None]
+    datasets.sort()
     for file in datasets:
         dataset = np.load(join(datasets_path, file), allow_pickle=True)
         # Figure out the indexes to slice the dataset with
@@ -94,6 +96,8 @@ def interpolate_datasets(datasets_path: str = ''):
     datasets_path = join(ROOT, datasets_path)
     regex = r'dataset(\d{2})\.npy'
     datasets = [f for f in listdir(datasets_path) if re.match(regex, f) is not None]
+    datasets.sort()
+    qa = None
     for file in datasets:
         dataset = np.load(join(datasets_path, file), allow_pickle=True)
         interp_dataset = as_array(dataset)
@@ -113,7 +117,8 @@ def interpolate_datasets(datasets_path: str = ''):
         # Interpolate the orientation (quaternion)
         for i in range(4):
             interp_dataset[missing_indices, i + 4] = np.interp(time_missing, time_known, orientation_known[:, i])
-        qa = Quaternion.from_array(orientation_known[0])
+        if qa is None:
+            qa = Quaternion.from_array(orientation_known[0])
         for i in missing_indices:
             t, x, y, z, w, qx, qy, qz, qe1, qe2, qe3, fx, fy, fz, mx, my, mz = interp_dataset[i]
             quat_eucl = (Quaternion.from_array([w, qx, qy, qz])*~qa).log()

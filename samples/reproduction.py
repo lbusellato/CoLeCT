@@ -8,7 +8,7 @@ from os.path import join, dirname, abspath
 ROOT = dirname(dirname(abspath(__file__)))
 
 rtde_c = rtde_control.RTDEControlInterface("172.17.0.2")
-rtde_r = rtde_receive.RTDEReceiveInterface("172.17.0.2")
+#rtde_r = rtde_receive.RTDEReceiveInterface("172.17.0.2")
 
 # Pull the KMP trajectories
 pos = np.load(join(ROOT, 'trained_models/mu_pos_kmp.npy'))
@@ -17,10 +17,6 @@ rot = np.load(join(ROOT, 'trained_models/mu_rot_kmp.npy'))
 # Pull the KMP uncertainties
 pos_uncert = np.load(join(ROOT, 'trained_models/sigma_pos_kmp.npy'))
 rot_uncert = np.load(join(ROOT, 'trained_models/sigma_rot_kmp.npy'))
-
-# Fake velocity
-vel = np.gradient(pos)[0]
-vel_uncert = np.tile(np.eye(3), pos_uncert.shape[2]).reshape(pos_uncert.shape)
 
 # Precompute precisions
 
