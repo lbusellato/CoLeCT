@@ -2,14 +2,14 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from os.path import join, dirname, abspath
-from src.dataset import create_dataset, trim_datasets, align_datasets, interpolate_datasets, load_datasets
+from src.dataset import create_dataset, trim_datasets, align_datasets, interpolate_datasets, load_datasets, to_base_frame
 
 ROOT = dirname(dirname(abspath(__file__)))
 
 
 def plot_demo(ax, demonstration, linewidth=1.0, color='blue'):
     # Plot all the data in a demonstration
-    time = [0.001*i for i in range(len(demonstration))]
+    time = [0.1*i for i in range(len(demonstration))]
     x = [p.x for p in demonstration]
     y = [p.y for p in demonstration]
     z = [p.z for p in demonstration]
@@ -42,13 +42,15 @@ def main():
     # Process the .csv files into .npy files
     path = 'demonstrations/single_point_task'
     regex = r'single_point_task(\d{2})\.csv'
-    create_dataset(path, demonstration_regex=regex)
+    """create_dataset(path, demonstration_regex=regex)
     # Trim any leading or trailing force-only samples
     trim_datasets(path)
     # Fill in the force-only samples by linearly interpolating the poses
     interpolate_datasets(path)
     # Align temporally the datasets with Soft-DTW
-    align_datasets(path)
+    align_datasets(path)"""
+    # Transform the coordinates to the base robot frame
+    to_base_frame(path)
     # Load the processed datasets
     processed = load_datasets(path)
     # Plot everything

@@ -94,4 +94,5 @@ class Recorder():
             The Rigid Body received from Motive. 
         """
         if self.recording:
+            rot = np.array([rigid_body.rot[3],rigid_body.rot[0],rigid_body.rot[1],rigid_body.rot[2]])
             self.reading[1:8] = rigid_body.pos + rigid_body.rot

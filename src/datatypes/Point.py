@@ -77,4 +77,15 @@ class Point():
     
     @classmethod
     def from_array(cls, array):
-        return cls(*array)
+        return cls(array[0],
+                   array[1],
+                   array[2],
+                   array[3],
+                   Quaternion.from_array(array[4:8]),
+                   array[8:11],
+                   array[11],
+                   array[12],
+                   array[13],
+                   array[14],
+                   array[15],
+                   array[16])

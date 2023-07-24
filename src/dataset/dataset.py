@@ -9,8 +9,7 @@ from tslearn.metrics import soft_dtw_alignment
 
 
 ROOT = dirname(dirname(dirname(abspath(__file__))))
-
-
+UR5_base_position = np.array([1.808655,	0.885495,	1.448405])
 def create_dataset(demonstrations_path: str = '', demonstration_regex: str = r'') -> None:
     """Process a set of demonstration recordings into an usable dataset
 
@@ -28,7 +27,7 @@ def create_dataset(demonstrations_path: str = '', demonstration_regex: str = r''
     out = []
     for i, file in enumerate(files):
         t_cnt = 1
-        t_dt = 0.001
+        t_dt = 0.1
         with open(join(demonstrations_path, file)) as csv_file:
             reader = csv.DictReader(csv_file)
             for j, row in enumerate(reader):
@@ -83,7 +82,7 @@ def as_array(dataset):
     return np.vstack([point.as_array() for point in dataset])
 
 def from_array(array):
-   return [Point.from_array(row) for row in array.T]
+   return [Point.from_array(row) for row in array]
 
 def interpolate_datasets(datasets_path: str = ''):
     """Fill in the force-only samples with a linear interpolation between the previous and next full samples.
@@ -128,6 +127,43 @@ def interpolate_datasets(datasets_path: str = ''):
         np.save(join(ROOT, datasets_path, file), dataset)
 
 
+def to_base_frame(datasets_path: str = '') -> None:
+    """Transform the coordinates to the base frame of the robot
+
+    Parameters
+    ----------
+    datasets_path : str, default = ''
+        The path to the datasets, relative to ROOT.
+    """
+    datasets_path = join(ROOT, datasets_path)
+    regex = r'dataset(\d{2})\.npy'
+    files = [f for f in listdir(datasets_path) if re.match(regex, f) is not None]
+    files.sort()
+    # Rotation of the robot base frame wrt Motive frame, expressed in quaternion form
+    q0 = Quaternion.from_array([np.sqrt(2)/2, -np.sqrt(2)/2, 0, 0])
+    theta = -np.pi
+    R = np.array([[1, 0, 0],
+                  [0, np.cos(theta), -np.sin(theta)],
+                  [0, np.sin(theta), np.cos(theta)]])
+    for file in files:
+        dataset = np.load(join(datasets_path, file), allow_pickle=True)
+        new = as_array(dataset)
+        # TODO: this would probably look better with a T matrix instead of hardcoding the rototranslation
+        # Translation
+        new[:, 1:4] -= UR5_base_position
+        # Rotation
+        new[:, [2, 3]] = new[:, [3, 2]]
+        new[:, 2] *= -1
+        # Quaternions
+        for i in range(new.shape[0]):
+            old_quat = Quaternion.from_array(new[i, 4:8])
+            #new_quat = q0 * old_quat * ~q0
+            old_quat_R = old_quat.as_rotation_matrix()
+            new_quat_R = R@old_quat_R.T
+            new_quat = Quaternion.from_rotation_matrix(new_quat_R)
+            new[i, 4:8] = new_quat.as_array()
+        np.save(join(ROOT, datasets_path, "t" + file), from_array(new))
+
 def compute_alignment_path(cost_matrix):
     """Computes the warping path from a cost matrix.
 
@@ -157,9 +193,11 @@ def align_datasets(datasets_path: str = ''):
     for i, dataset in enumerate(datasets):
         if i > 0:
             cost_matrix, _ = soft_dtw_alignment(as_array(dataset)[:, 1:8], reference, gamma=2.5)
+            for j, point in enumerate(dataset):
+                point.timestamp = (j + 1) * 0.1
             np.save(join(ROOT, datasets_path, f'dataset{i:02d}.npy'), dataset[compute_alignment_path(cost_matrix)])
 
-def load_datasets(datasets_path: str='', regex = r'dataset(\d{2})\.npy') -> np.ndarray:
+def load_datasets(datasets_path: str='', regex = r'tdataset(\d{2})\.npy') -> np.ndarray:
     """Load all datasets in the given folder.
 
     Parameters

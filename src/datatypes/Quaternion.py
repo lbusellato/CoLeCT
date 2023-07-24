@@ -39,6 +39,21 @@ class Quaternion:
         v = np.abs(np.cos(angle/2))
         u = axis*np.sin(angle/2)
         return cls(v, u)
+    
+    def as_rotation_vector(self) -> ArrayLike:
+        """Converts the quaternion to a rotation vector.
+
+        Returns
+        -------
+        array-like of shape (3,)
+            The rotation vector.
+        """
+        angle = 2*np.arccos(self.v)
+        if np.abs(angle) > 1e-8:
+            axis = self.u / np.sin(angle/2)
+        else:
+            axis = np.zeros(3)
+        return angle*axis
 
     @classmethod
     def from_array(cls, array: ArrayLike) -> 'Quaternion':
@@ -55,6 +70,64 @@ class Quaternion:
             The corresponding quaternion
         """
         return cls(array[0], array[1:])
+    
+    def as_array(self) -> ArrayLike:
+        """Returns the quaternion's components as an array, with the scalar component first.
+
+        Returns
+        -------
+        array-like of shape (4,)
+            The array representing the quaternion.
+        """
+        return np.concatenate(([self.v], self.u))
+
+    @classmethod
+    def from_rotation_matrix(cls, R: ArrayLike) -> 'Quaternion':
+        """Creates a quaternion from a rotation matrix.
+
+        Parameters
+        ----------
+        array : array-like of shape (3,3)
+            The rotation matrix.
+
+        Returns
+        -------
+        quaternion
+            The corresponding quaternion
+        """
+        trace = R[0,0] + R[1,1] + R[2,2]
+        if trace > 0:
+            S = np.sqrt(trace + 1) * 2
+            v = 0.25 * S
+            u = np.array([(R[2,1] - R[1,2]) / S, (R[0,2] - R[2,0]) / S, (R[1,0] - R[0,1]) / S])
+        elif R[0,0] > R[1,1] and R[0,0] > R[2,2]:
+            S = np.sqrt(1 + R[0,0] - R[1,1] - R[2,2]) * 2
+            v =(R[2,1] - R[1,2]) / S
+            u = np.array([0.25 * S, (R[0,1] - R[1,0]) / S, (R[0,2] - R[2,0]) / S])
+        elif R[1,1] > R[2,2]:
+            S = np.sqrt(1 + R[1,1] - R[0,0] - R[2,2]) * 2
+            v = (R[0,2] - R[2,0]) / S
+            u = np.array([(R[0,1] - R[1,0]) / S, 0.25 * S, (R[1,2] - R[2,1]) / S])
+        else:
+            S = np.sqrt(1 + R[2,2] - R[0,0] - R[1,1]) * 2
+            v = (R[1,0] - R[0,1]) / S
+            u = np.array([(R[0,2] - R[2,0]) / S, (R[1,2] - R[2,1]) / S, 0.25 * S])
+        return cls(v, u)
+
+    def as_rotation_matrix(self) -> np.array:
+        """Return the rotation matrix representation of self.
+        
+        Returns
+        -------
+        ArrayLike
+            The rotation matrix corresponding to self.
+        """
+        w = self.v
+        x, y, z = self.u
+        out = np.array([[1 - 2*y**2 - 2*z**2, 2*x*y - 2*w*z, 2*x*z + 2*w*y],
+                        [2*x*y + 2*w*z, 1 - 2*x**2 - 2*z**2, 2*y*z - 2*w*x],
+                        [2*x*z - 2*w*y, 2*y*z + 2*w*x, 1 - 2*x**2 - 2*y**2 ]])
+        return out
 
     @classmethod
     def exp(cls, w: ArrayLike) -> 'Quaternion':
@@ -103,16 +176,6 @@ class Quaternion:
             The vector of absolute values of self's components.
         """
         return np.concatenate(([np.abs(self.v)], np.abs(self.u)))
-
-    def as_array(self) -> ArrayLike:
-        """Returns the quaternion's components as an array, with the scalar component first.
-
-        Returns
-        -------
-        array-like of shape (4,)
-            The array representing the quaternion.
-        """
-        return np.concatenate(([self.v], self.u))
 
     def normalize(self) -> 'Quaternion':
         """Normalizes self.

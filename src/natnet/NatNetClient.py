@@ -499,7 +499,7 @@ class NatNetClient():
         rot = Quaternion.unpack(data[offset:offset+16])
         offset += 16
         self._logger.debug(
-            f'\tOrientation: {rot[0]}, {rot[1]}, {rot[2]}, {rot[3]}')
+            f'\tOrientation: {rot[3]}, {rot[0]}, {rot[1]}, {rot[2]}')
         rigid_body = RigidBody(id=id, pos=pos, rot=rot)
         if self._rigid_body_listener is not None:
             self._rigid_body_listener(rigid_body)

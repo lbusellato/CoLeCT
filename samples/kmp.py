@@ -25,7 +25,7 @@ force_ = True
 def main():
     # Showcase GMR and KMP on the single point task dataset
     # Load the demonstrations
-    datasets = load_datasets('demonstrations/single_point_task')
+    datasets = load_datasets('demonstrations/single_point_task', regex=r'tdataset(\d{2})\.npy')
     # Prepare the data for GMM/GMR
     H = len(datasets)  # Number of demonstrations
     N = len(datasets[0]) // subsample  # Length of each demonstration
@@ -90,7 +90,7 @@ def main():
     # KMP on the position
     if pos:
         kmp_dt = 0.01
-        x_kmp = kmp_dt*np.arange(1, demo_dura/kmp_dt + 1).reshape(1, -1)
+        x_kmp = np.arange(kmp_dt, demo_dura, kmp_dt).reshape(1, -1)
         kmp = KMP(l=0.5, alpha=40, sigma_f=1, verbose=True)
         kmp.fit(x_gmr, mu_pos, sigma_pos)
         mu_pos_kmp, sigma_pos_kmp = kmp.predict(x_kmp) 
@@ -98,7 +98,7 @@ def main():
         np.save(join(ROOT, 'trained_models/sigma_pos_kmp.npy'), sigma_pos_kmp)
     # KMP on the orientation
     if rot:
-        kmp_dt = 0.1
+        kmp_dt = 0.01
         x_kmp = np.arange(kmp_dt, demo_dura, kmp_dt).reshape(1, -1)
         kmp = KMP(l=0.5, alpha=30, sigma_f=2, verbose=True)
         kmp.fit(x_gmr, mu_rot, sigma_rot)
@@ -106,12 +106,13 @@ def main():
         np.save(join(ROOT, 'trained_models/mu_rot_kmp.npy'), mu_rot_kmp)
         np.save(join(ROOT, 'trained_models/sigma_rot_kmp.npy'), sigma_rot_kmp)
         quats_kmp = np.vstack((mu_rot_kmp[:3,:],np.zeros_like(mu_rot_kmp[0,:])))
-        for i in range(mu_rot.shape[1]):
+        for i in range(mu_rot_kmp.shape[1]):
             quats_kmp[:, i] = (Quaternion.exp(mu_rot_kmp[:3, i])*qa).as_array()
+        np.save(join(ROOT, 'trained_models/mu_rot_kmp_quats.npy'), quats_kmp)
     # KMP on the force
     if force_:
         kmp_dt = 0.01
-        x_kmp = kmp_dt*np.arange(1, demo_dura/kmp_dt + 1).reshape(1, -1)
+        x_kmp = np.arange(kmp_dt, demo_dura, kmp_dt).reshape(1, -1)
         kmp = KMP(l=0.5, alpha=40, sigma_f=1, verbose=True)
         kmp.fit(x_gmr, mu_force, sigma_force)
         mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp)
@@ -122,21 +123,19 @@ def main():
     for dataset in datasets:
         plot_demo(ax, dataset[::subsample], demo_dura)
     t_gmr = np.arange(gmm_dt, demo_dura, gmm_dt)
-    t_kmp = np.arange(kmp_dt, demo_dura+kmp_dt, kmp_dt)
+    t_kmp = np.arange(kmp_dt, demo_dura, kmp_dt)
     for i in range(3):
         if pos:
             ax[0, i].errorbar(x=t_gmr, y=mu_pos[i, :], yerr=np.sqrt(sigma_pos[i,i,:]), color='red', alpha=0.35)
             ax[0, i].errorbar(x=t_kmp, y=mu_pos_kmp[i, :], yerr=np.sqrt(sigma_pos_kmp[i,i,:]), color='green', alpha=0.25)
-        if rot:
-            """
-            # Plot Euclidean quaternions
+        if rot:            
+            """# Plot Euclidean quaternions
             ax[1, i].errorbar(x=t_gmr, y=mu_rot[i, :], yerr=np.sqrt(sigma_rot[i,i,:]), color='red', alpha=0.35)
             ax[1, i].errorbar(x=t_kmp, y=mu_rot_kmp[i, :], yerr=np.sqrt(sigma_rot_kmp[i,i,:]), color='green', alpha=0.1)
             ax[1, i].plot(t_gmr, mu_rot[i, :], color='green')
             ax[1, i].plot(t_kmp, mu_rot_kmp[i, :], color='green')"""
-            t = np.arange(0.1, demo_dura, 0.1)
             ax[1, i].plot(t_gmr, quats[i+1, :], color='red')
-            ax[1, i].plot(t, quats_kmp[i+1, :], color='green')
+            ax[1, i].plot(t_kmp, quats_kmp[i+1, :], color='green')
         if force_:
             ax[2, i].errorbar(x=t_gmr, y=mu_force[i, :], yerr=np.sqrt(sigma_force[i,i,:]), color='red', alpha=0.35)
             ax[2, i].errorbar(x=t_kmp, y=mu_force_kmp[i, :], yerr=np.sqrt(sigma_force_kmp[i,i,:]), color='green', alpha=0.25)
@@ -154,7 +153,10 @@ def plot_demo(ax, demonstration, dura, linestyle='solid', label=''):
     z = [p.z for p in demonstration]
     qx = [p.rot.as_array()[1] for p in demonstration]    
     qy = [p.rot.as_array()[2] for p in demonstration]    
-    qz = [p.rot.as_array()[3] for p in demonstration]    
+    qz = [p.rot.as_array()[3] for p in demonstration]  
+    """qx = [p.rot_eucl[0] for p in demonstration]    
+    qy = [p.rot_eucl[1] for p in demonstration]    
+    qz = [p.rot_eucl[2] for p in demonstration]    """
     fx = [p.fx for p in demonstration]    
     fy = [p.fy for p in demonstration]    
     fz = [p.fz for p in demonstration]
