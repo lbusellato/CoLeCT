@@ -148,7 +148,6 @@ class KMP:
                     # Add the regularization terms on the diagonal
                     k[j*self.O:(j+1)*self.O, i*self.O:(i+1) * self.O] += self.l*self.sigma[:, :, i]
         self._estimator = np.linalg.inv(k)
-        test = 0
         
     def predict(self, s: ArrayLike) -> Tuple[ArrayLike, ArrayLike]:
         """Carry out a prediction on the mean and covariance associated to the given input.
@@ -177,5 +176,5 @@ class KMP:
                     Y[i*self.O+h] = self.xi[h, i]
             xi[:, j] = np.squeeze((k@self._estimator@Y.reshape(-1,1)))
             sigma[:, :, j] = self.alpha*(self.__kernel_matrix(s[:, j], s[:, j]) - k@self._estimator@k.T)
-        self._logger.info(f'KMP Done.')
         return xi, sigma
+    

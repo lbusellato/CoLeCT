@@ -139,12 +139,13 @@ def to_base_frame(datasets_path: str = '') -> None:
     regex = r'dataset(\d{2})\.npy'
     files = [f for f in listdir(datasets_path) if re.match(regex, f) is not None]
     files.sort()
-    # Rotation of the robot base frame wrt Motive frame, expressed in quaternion form
-    q0 = Quaternion.from_array([np.sqrt(2)/2, -np.sqrt(2)/2, 0, 0])
+    # Rotation of the robot base frame wrt Motive frame
     theta = -np.pi
     R = np.array([[1, 0, 0],
                   [0, np.cos(theta), -np.sin(theta)],
                   [0, np.sin(theta), np.cos(theta)]])
+    # For Euclidean projection
+    qa = None
     for file in files:
         dataset = np.load(join(datasets_path, file), allow_pickle=True)
         new = as_array(dataset)
@@ -157,11 +158,13 @@ def to_base_frame(datasets_path: str = '') -> None:
         # Quaternions
         for i in range(new.shape[0]):
             old_quat = Quaternion.from_array(new[i, 4:8])
-            #new_quat = q0 * old_quat * ~q0
             old_quat_R = old_quat.as_rotation_matrix()
             new_quat_R = R@old_quat_R.T
             new_quat = Quaternion.from_rotation_matrix(new_quat_R)
+            if qa is None:
+                qa = new_quat
             new[i, 4:8] = new_quat.as_array()
+            new[i, 8:11] = (new_quat*~qa).log()
         np.save(join(ROOT, datasets_path, "t" + file), from_array(new))
 
 def compute_alignment_path(cost_matrix):
