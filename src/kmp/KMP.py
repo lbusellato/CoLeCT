@@ -3,6 +3,7 @@ import logging
 import math
 import numpy as np
 
+from numpy.linalg import inv, norm
 from numpy.typing import ArrayLike
 from typing import Tuple
 
@@ -46,42 +47,6 @@ class KMP:
         self._logger = logging.getLogger(__name__)
         self._logger.setLevel(level=logging.DEBUG if verbose else logging.INFO)
 
-    def set_waypoint(self,
-                     s: ArrayLike,
-                     xi: ArrayLike,
-                     sigma: ArrayLike) -> None:
-        """Adds a waypoint to the database, checking for conflicts.
-
-        Parameters
-        ----------
-        s : array-like of shape (n_input_features,n_samples)
-            Array of input vectors.
-        xi : array-like of shape (n_output_features,n_samples)
-            Array of output vectors
-        sigma : array-like of shape (n_output_features,n_output_features,n_samples)
-            Array of covariance matrices
-        """
-        for j in range(len(s)):
-            # Loop over the reference database to find any conflicts
-            min_dist = math.inf
-            for i in range(self.N):
-                dist = np.linalg.norm(self.s[:, i]-s[j])
-                if dist < min_dist:
-                    min_dist = dist
-                    id = i
-            if min_dist < self.tol:
-                # Replace the conflicting point
-                self.s[:, id] = s[j]
-                self.xi[:, id] = xi[j]
-                self.sigma[:, :, id] = sigma[j]
-            else:
-                # Add the new point to the database
-                self.s = np.append(self.s, np.array(s[j]).reshape(1, -1))
-                self.xi = np.append(self.xi, xi[j])
-                self.sigma = np.append(self.sigma, sigma[j])
-        # Refit the model with the new data
-        self.fit(self.s, self.xi, self.sigma)
-
     def __kernel_matrix(self,
                         t1: float,
                         t2: float) -> ArrayLike:
@@ -102,12 +67,12 @@ class KMP:
         dt = 0.001
         t1dt = t1 + dt
         t2dt = t2 + dt
-        ktt = np.exp(-self.sigma_f*(t1-t2)**2)
-        ktdt_tmp = np.exp(-self.sigma_f*(t1-t2dt)**2)
+        ktt = np.exp(-self.sigma_f*norm(t1-t2)**2)
+        ktdt_tmp = np.exp(-self.sigma_f*norm(t1-t2dt)**2)
         ktdt = (ktdt_tmp - ktt)/dt
-        kdtt_tmp = np.exp(-self.sigma_f*(t1dt-t2)**2)
+        kdtt_tmp = np.exp(-self.sigma_f*norm(t1dt-t2)**2)
         kdtt = (kdtt_tmp - ktt)/dt
-        kdtdt_tmp = np.exp(-self.sigma_f*(t1dt-t2dt)**2)
+        kdtdt_tmp = np.exp(-self.sigma_f*norm(t1dt-t2dt)**2)
         kdtdt = (kdtdt_tmp - ktdt_tmp - kdtt_tmp + ktt)/dt**2
         kernel_matrix = np.zeros((self.O,self.O))
         dim = self.O//2
@@ -147,7 +112,7 @@ class KMP:
                 if i == j:
                     # Add the regularization terms on the diagonal
                     k[j*self.O:(j+1)*self.O, i*self.O:(i+1) * self.O] += self.l*self.sigma[:, :, i]
-        self._estimator = np.linalg.inv(k)
+        self._estimator = inv(k)
         
     def predict(self, s: ArrayLike) -> Tuple[ArrayLike, ArrayLike]:
         """Carry out a prediction on the mean and covariance associated to the given input.

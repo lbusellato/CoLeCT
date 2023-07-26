@@ -66,14 +66,14 @@ def main():
     qa = datasets[0][0].rot
     # GMM/GMR on the position
     if pos_:
-        gmm = GaussianMixtureModel(n_components=10)
+        gmm = GaussianMixtureModel(n_components=10, n_demos=H, n_input_features=1)
         gmm.fit(X_pos)
         mu_pos, sigma_pos = gmm.predict(x_gmr)
         np.save(join(ROOT, 'trained_models/mu_pos.npy'), mu_pos)
         np.save(join(ROOT, 'trained_models/sigma_pos.npy'), sigma_pos)
     # GMM/GMR on the orientation
     if rot_:
-        gmm = GaussianMixtureModel(n_components=10)
+        gmm = GaussianMixtureModel(n_components=10, n_demos=H, n_input_features=1)
         gmm.fit(X_rot)
         mu_rot, sigma_rot = gmm.predict(x_gmr)
         np.save(join(ROOT, 'trained_models/mu_rot.npy'), mu_rot)
@@ -83,7 +83,7 @@ def main():
             quats[:, i] = (Quaternion.exp(mu_rot[:3, i])*qa).as_array()
     # GMM/GMR on the force
     if force_:
-        gmm = GaussianMixtureModel(n_components=10)
+        gmm = GaussianMixtureModel(n_components=10, n_demos=H, n_input_features=1)
         gmm.fit(X_force)
         mu_force, sigma_force = gmm.predict(x_gmr)
         np.save(join(ROOT, 'trained_models/mu_force.npy'), mu_force)

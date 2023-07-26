@@ -1,6 +1,7 @@
 import logging
 import numpy as np
 
+from numpy.linalg import inv
 from numpy.typing import ArrayLike
 from typing import Tuple
 
@@ -15,8 +16,12 @@ REALMIN = np.finfo(np.float64).tiny  # To avoid division by 0
 class GaussianMixtureModel():
     def __init__(self,
                  n_components: int = 10,
+                 n_demos: int = 5,
+                 n_input_features: int = 1,
                  dt: float = 0.1) -> None:
         self.n_components = n_components
+        self.n_demos = n_demos
+        self.n_input_features = n_input_features
         self.dt = dt
         self.logger = logging.getLogger(__name__)
         self.initialized = False
@@ -30,22 +35,22 @@ class GaussianMixtureModel():
         data : ArrayLike of shape (n_features, n_samples)
             The dataset to initialize the GMM with.
         """
-        n_features = data.shape[0]
+        n_features, n_samples = data.shape
         diag_reg_factor = np.eye(n_features) * 1e-8
         # Clustering data to initialize the GMM
-        timing_separation = np.linspace(min(data[0,:]), max(data[0,:]), self.n_components + 1)
+        labels = np.arange(n_samples//self.n_demos) % self.n_components
+        labels.sort()
+        labels = np.tile(labels, self.n_demos)
         # Initialize the arrays for the priors, means and covariances
         self.priors = np.zeros((self.n_components))
         self.means = np.zeros((n_features, self.n_components))
         self.covariances = np.zeros((n_features, n_features, self.n_components))
         # Initialize the GMM components
-        for i in range(self.n_components):
-            ids = [id for id, t in enumerate(data[0,:]) if t >= timing_separation[i] and t < timing_separation[i + 1]]
-            self.priors[i] = len(ids)
-            self.means[:, i] = np.mean(data[:, ids].T, axis=0)
-            self.covariances[:, :, i] = np.cov(data[:, ids])
-            # Add the regularization term to avoid numerical instability
-            self.covariances[:, :, i] += diag_reg_factor
+        for c in range(self.n_components):
+            ids = [id for id, t in enumerate(labels) if t == c]
+            self.priors[c] = len(ids)
+            self.means[:, c] = np.mean(data[:, ids].T, axis=0)
+            self.covariances[:, :, c] = np.cov(data[:, ids]) + diag_reg_factor
         # Normalize the priors
         self.priors = self.priors / np.sum(self.priors)
         self.initialized = True
@@ -69,14 +74,13 @@ class GaussianMixtureModel():
             The likelihoods of the dataset.
         """
         if data.ndim == 1:
-            data_cntr = data - mean
-            pdf = (data_cntr**2)/cov
-            pdf = np.exp(-0.5*pdf)/np.sqrt(2*np.pi*np.abs(cov)+REALMIN)
-        else:
-            n_features, n_samples = data.shape
-            data_cntr = data.T - np.tile(mean.T, (n_samples, 1))
-            pdf = np.sum(np.linalg.solve(cov.conj().T, data_cntr.conj().T).conj().T*data_cntr, axis=1)
-            pdf = np.exp(-0.5*pdf)/np.sqrt(np.abs(np.linalg.det(cov))*(2*np.pi)**n_features + REALMIN)
+            # Univariate case, adjust the input shapes
+            data = data.reshape(-1,1)
+            cov = np.array([[cov]])
+        n_features, n_samples = data.shape
+        data_cntr = data.T - np.tile(mean.T, (n_samples, 1))
+        pdf = np.sum(data_cntr@inv(cov)*data_cntr, axis=1)
+        pdf = np.exp(-0.5*pdf)/np.sqrt(np.abs(np.linalg.det(cov))*(2*np.pi)**n_features + REALMIN)
         return pdf
 
     def likelihood(self, data: ArrayLike) -> ArrayLike:
@@ -148,26 +152,29 @@ class GaussianMixtureModel():
         covariances : ArrayLike of shape (n_output_features, n_output_features, n_samples)
             The covariance matrices associated to each input point.
         """
-        n_input_features, n_samples = data.shape
-        n_output_features = self.n_features - n_input_features
+        I, N = data.shape
+        n_output_features = self.n_features - I
         diag_reg_factor = np.eye(n_output_features)*1e-8
         # Initialize needed arrays
         mu_tmp = np.zeros((n_output_features, self.n_components))
-        means = np.zeros((n_output_features, n_samples))
-        covariances = np.zeros((n_output_features, n_output_features, n_samples))
-        H = np.zeros((self.n_components, n_samples))
-        for t in range(n_samples):
+        means = np.zeros((n_output_features, N))
+        covariances = np.zeros((n_output_features, n_output_features, N))
+        H = np.zeros((self.n_components, N))
+        for t in range(N):
             # Activation weight
             for i in range(self.n_components):
-                H[i,t] = self.priors[i] * self.gaussPDF(data[:,t], self.means[0,i], self.covariances[0,0,i])
+                mu = self.means[:I,i]
+                sigma = self.covariances[:I,:I,i]
+                H[i,t] = self.priors[i] * self.gaussPDF(data[:,t], mu, sigma)
             H[:,t] /= np.sum(H[:,t] + REALMIN)
             # Conditional means
             for i in range(self.n_components):
-                mu_tmp[:,i] = self.means[1:,i] + (self.covariances[1:,0,i]/self.covariances[0,0,i])*(data[:,t]-self.means[0,i])
+                sigma_tmp = self.covariances[I:,:I,i]@inv(self.covariances[:I,:I,i])
+                mu_tmp[:,i] = self.means[I:,i] + sigma_tmp@(data[:,t]-self.means[:I,i])
                 means[:,t] += H[i,t]*mu_tmp[:,i]
             # Conditional covariances
             for i in range(self.n_components):
-                sigma_tmp = self.covariances[1:,1:,i] - (self.covariances[1:,0,i]/self.covariances[0,0,i]).reshape(-1,1)@self.covariances[0,1:,i].reshape(-1,1).T
+                sigma_tmp = self.covariances[I:,I:,i] - ((self.covariances[I:,:I,i]/self.covariances[:I,:I,i]).reshape(-1,1))@self.covariances[:I,I:,i].reshape(-1,1).T
                 covariances[:,:,t] += H[i,t]*(sigma_tmp + np.outer(mu_tmp[:,i],mu_tmp[:,i]))
             covariances[:,:,t] += diag_reg_factor - np.outer(means[:,t],means[:,t])
         return means, covariances
