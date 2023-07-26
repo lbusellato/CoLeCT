@@ -53,6 +53,15 @@ def main():
         quat_eucl[2,:] = np.gradient(quat_eucl[2,:])/gmm_dt
     dY_rot = np.hstack(quats_eucl)
     X_rot = np.vstack((X, Y_rot, dY_rot))
+    Y_force = np.vstack([p.force for dataset in datasets for p in dataset[::subsample]]).T
+    # Compute the derivatives of the forces
+    forces = np.split(copy.deepcopy(Y_force), H, axis=1)
+    for force in forces:
+        force[0,:] = np.gradient(force[0,:])/gmm_dt
+        force[1,:] = np.gradient(force[1,:])/gmm_dt
+        force[2,:] = np.gradient(force[2,:])/gmm_dt
+    dY_force = np.hstack(forces)
+    X_force = np.vstack((X, Y_force, dY_force))
     # Recover the auxiliary quaternion  
     qa = datasets[0][0].rot
     # GMM/GMR on the position
@@ -71,17 +80,7 @@ def main():
         np.save(join(ROOT, 'trained_models/sigma_rot.npy'), sigma_rot)
         quats = np.vstack((mu_rot[:3,:],np.zeros_like(mu_rot[0,:])))
         for i in range(mu_rot.shape[1]):
-            quats[:, i] = (Quaternion.exp(mu_rot[:3, i])*~qa).as_array()
-    Y_force = np.vstack([p.force for dataset in datasets for p in dataset[::subsample]]).T
-    # Compute the derivatives of the forces
-    forces = np.split(copy.deepcopy(Y_force), H, axis=1)
-    for force in forces:
-        force[0,:] = np.gradient(force[0,:])/gmm_dt
-        force[1,:] = np.gradient(force[1,:])/gmm_dt
-        force[2,:] = np.gradient(force[2,:])/gmm_dt
-    dY_force = np.hstack(forces)
-    poses = np.vstack((Y_pos[:3, :], Y_rot[:3, :]))
-    X_force = np.vstack((poses, Y_force, dY_force))
+            quats[:, i] = (Quaternion.exp(mu_rot[:3, i])*qa).as_array()
     # GMM/GMR on the force
     if force_:
         gmm = GaussianMixtureModel(n_components=10)
@@ -91,7 +90,7 @@ def main():
         np.save(join(ROOT, 'trained_models/sigma_force.npy'), sigma_force)
     # KMP on the position
     if pos_:
-        kmp_dt = 0.002
+        kmp_dt = 0.01
         x_kmp = np.arange(kmp_dt, demo_dura, kmp_dt).reshape(1, -1)
         kmp = KMP(l=0.5, alpha=40, sigma_f=1, verbose=True)
         kmp.fit(x_gmr, mu_pos, sigma_pos)
@@ -102,7 +101,7 @@ def main():
             pickle.dump(kmp, file)
     # KMP on the orientation
     if rot_:
-        kmp_dt = 0.002
+        kmp_dt = 0.01
         x_kmp = np.arange(kmp_dt, demo_dura, kmp_dt).reshape(1, -1)
         kmp = KMP(l=0.5, alpha=30, sigma_f=2, verbose=True)
         kmp.fit(x_gmr, mu_rot, sigma_rot)
@@ -111,13 +110,13 @@ def main():
         np.save(join(ROOT, 'trained_models/sigma_rot_kmp.npy'), sigma_rot_kmp)
         quats_kmp = np.vstack((mu_rot_kmp[:3,:],np.zeros_like(mu_rot_kmp[0,:])))
         for i in range(mu_rot_kmp.shape[1]):
-            quats_kmp[:, i] = (Quaternion.exp(mu_rot_kmp[:3, i])*~qa).as_array()
+            quats_kmp[:, i] = (Quaternion.exp(mu_rot_kmp[:3, i])*qa).as_array()
         np.save(join(ROOT, 'trained_models/mu_rot_kmp_quats.npy'), quats_kmp)
         with open(join(ROOT, "trained_models/rot_kmp.pkl"), "wb") as file:
             pickle.dump(kmp, file)
     # KMP on the force
     if force_:
-        kmp_dt = 0.002
+        kmp_dt = 0.01
         x_kmp = np.arange(kmp_dt, demo_dura, kmp_dt).reshape(1, -1)
         kmp = KMP(l=0.5, alpha=40, sigma_f=1, verbose=True)
         kmp.fit(x_gmr, mu_force, sigma_force)
@@ -127,7 +126,7 @@ def main():
         with open(join(ROOT, "trained_models/force_kmp.pkl"), "wb") as file:
             pickle.dump(kmp, file)
     # Plot everything
-    fig, ax = plt.subplots(2, 3, figsize=(16,8))
+    fig, ax = plt.subplots(3, 3, figsize=(16,8))
     for dataset in datasets:
         plot_demo(ax, dataset[::subsample], demo_dura)
     t_gmr = np.arange(gmm_dt, demo_dura, gmm_dt)
@@ -164,13 +163,13 @@ def plot_demo(ax, demonstration, dura, linestyle='solid', label=''):
     y_labels = ['x [m]', 'y [m]', 'z [m]',
                 'qx', 'qy', 'qz',
                 'Fx [N]', 'Fy [N]', 'Fz [N]']
-    for i in range(2):
+    for i in range(3):
         for j in range(3):
             ax[i, j].plot(time, data[i*3 + j],
                         linestyle=linestyle, label=label, linewidth=0.6, color='grey')
             ax[i, j].set_ylabel(y_labels[i*3 + j])
             ax[i, j].grid(True)
-            if i == 1:
+            if i == 2:
                 ax[i, j].set_xlabel('Time [s]')
 
 

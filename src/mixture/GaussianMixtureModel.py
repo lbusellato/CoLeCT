@@ -15,12 +15,10 @@ REALMIN = np.finfo(np.float64).tiny  # To avoid division by 0
 class GaussianMixtureModel():
     def __init__(self,
                  n_components: int = 10,
-                 dt: float = 0.1,
-                 input_features = 1) -> None:
+                 dt: float = 0.1) -> None:
         self.n_components = n_components
         self.dt = dt
         self.logger = logging.getLogger(__name__)
-        self.input_features = input_features
         self.initialized = False
 
     def init(self, data: ArrayLike) -> None:
