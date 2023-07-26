@@ -137,13 +137,11 @@ def main():
             ax[0, i].errorbar(x=t_gmr, y=mu_pos[i, :], yerr=np.sqrt(sigma_pos[i,i,:]), color='red', alpha=0.35)
             ax[0, i].errorbar(x=t_kmp, y=mu_pos_kmp[i, :], yerr=np.sqrt(sigma_pos_kmp[i,i,:]), color='green', alpha=0.25)
         if rot_:            
-            """# Plot Euclidean quaternions
-            ax[1, i].errorbar(x=t_gmr, y=mu_rot[i, :], yerr=np.sqrt(sigma_rot[i,i,:]), color='red', alpha=0.35)
-            ax[1, i].errorbar(x=t_kmp, y=mu_rot_kmp[i, :], yerr=np.sqrt(sigma_rot_kmp[i,i,:]), color='green', alpha=0.1)
-            ax[1, i].plot(t_gmr, mu_rot[i, :], color='green')
-            ax[1, i].plot(t_kmp, mu_rot_kmp[i, :], color='green')"""
             ax[1, i].plot(t_gmr, quats[i+1, :], color='red')
             ax[1, i].plot(t_kmp, quats_kmp[i+1, :], color='green')
+        if force_:
+            ax[2, i].errorbar(x=t_gmr, y=mu_force[i, :], yerr=np.sqrt(sigma_force[i,i,:]), color='red', alpha=0.35)
+            ax[2, i].errorbar(x=t_kmp, y=mu_force_kmp[i, :], yerr=np.sqrt(sigma_force_kmp[i,i,:]), color='green', alpha=0.25)
     fig.suptitle('Single point task - GMR and KMP')
     fig.tight_layout()
     plots_path = join(ROOT, 'media/single_point_task_kmp.png')
@@ -159,9 +157,13 @@ def plot_demo(ax, demonstration, dura, linestyle='solid', label=''):
     qx = [p.rot.as_array()[1] for p in demonstration]    
     qy = [p.rot.as_array()[2] for p in demonstration]    
     qz = [p.rot.as_array()[3] for p in demonstration]  
+    fx = [p.fx for p in demonstration]    
+    fy = [p.fy for p in demonstration]    
+    fz = [p.fz for p in demonstration]
     data = [x, y, z, qx, qy, qz, fx, fy, fz]
     y_labels = ['x [m]', 'y [m]', 'z [m]',
-                'qx', 'qy', 'qz']
+                'qx', 'qy', 'qz',
+                'Fx [N]', 'Fy [N]', 'Fz [N]']
     for i in range(2):
         for j in range(3):
             ax[i, j].plot(time, data[i*3 + j],

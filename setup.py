@@ -2,7 +2,7 @@ from setuptools import setup, find_packages
 
 with open('requirements.txt') as f:
     requirements = f.readlines()
-
+    
 setup(
     name='CoLeCT',
     version='0.1',
