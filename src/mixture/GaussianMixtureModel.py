@@ -76,7 +76,6 @@ class GaussianMixtureModel():
         if data.ndim == 1:
             # Univariate case, adjust the input shapes
             data = data.reshape(-1,1)
-            cov = np.array([[cov]])
         n_features, n_samples = data.shape
         data_cntr = data.T - np.tile(mean.T, (n_samples, 1))
         pdf = np.sum(data_cntr@inv(cov)*data_cntr, axis=1)
@@ -174,7 +173,10 @@ class GaussianMixtureModel():
                 means[:,t] += H[i,t]*mu_tmp[:,i]
             # Conditional covariances
             for i in range(self.n_components):
-                sigma_tmp = self.covariances[I:,I:,i] - ((self.covariances[I:,:I,i]/self.covariances[:I,:I,i]).reshape(-1,1))@self.covariances[:I,I:,i].reshape(-1,1).T
+                if I == 1:
+                    sigma_tmp = self.covariances[I:,I:,i] - ((self.covariances[I:,:I,i]/self.covariances[:I,:I,i]).reshape(-1,1))@self.covariances[:I,I:,i].reshape(-1,1).T
+                else:
+                    sigma_tmp = self.covariances[I:,I:,i] - ((self.covariances[I:,:I,i]/self.covariances[:I,:I,i]))@self.covariances[:I,I:,i].T
                 covariances[:,:,t] += H[i,t]*(sigma_tmp + np.outer(mu_tmp[:,i],mu_tmp[:,i]))
             covariances[:,:,t] += diag_reg_factor - np.outer(means[:,t],means[:,t])
         return means, covariances

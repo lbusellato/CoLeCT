@@ -19,8 +19,8 @@ logging.basicConfig(
 
 ROOT = dirname(dirname(abspath(__file__)))
 subsample = 100
-pos_ = True
-rot_ = True
+pos_ = False
+rot_ = False
 force_ = True
 
 def main():
@@ -61,7 +61,7 @@ def main():
         force[1,:] = np.gradient(force[1,:])/gmm_dt
         force[2,:] = np.gradient(force[2,:])/gmm_dt
     dY_force = np.hstack(forces)
-    X_force = np.vstack((X, Y_force, dY_force))
+    X_force = np.vstack((Y_pos, Y_force))
     # Recover the auxiliary quaternion  
     qa = datasets[0][0].rot
     # GMM/GMR on the position
@@ -78,14 +78,30 @@ def main():
         mu_rot, sigma_rot = gmm.predict(x_gmr)
         np.save(join(ROOT, 'trained_models/mu_rot.npy'), mu_rot)
         np.save(join(ROOT, 'trained_models/sigma_rot.npy'), sigma_rot)
-        quats = np.vstack((mu_rot[:3,:],np.zeros_like(mu_rot[0,:])))
+        gmr_quats = np.vstack((mu_rot[:3,:],np.zeros_like(mu_rot[0,:])))
+        gmr_rot_vectors = np.zeros_like(mu_rot[:3,:])
         for i in range(mu_rot.shape[1]):
-            quats[:, i] = (Quaternion.exp(mu_rot[:3, i])*qa).as_array()
+            quat = (Quaternion.exp(mu_rot[:3, i])*qa)
+            gmr_rot_vectors[:,i] = quat.as_rotation_vector()
+            gmr_quats[:,i] = quat.as_array()
+        np.save(join(ROOT, 'trained_models/gmr_quats.npy'), gmr_quats)
+        np.save(join(ROOT, 'trained_models/gmr_rot_vectors.npy'), gmr_rot_vectors)
     # GMM/GMR on the force
     if force_:
-        gmm = GaussianMixtureModel(n_components=10, n_demos=H, n_input_features=1)
+        from gmr import GMM
+        x_gmr_force = np.load(join(ROOT, 'trained_models/mu_pos.npy'))[:3,:]
+        gmm = GaussianMixtureModel(n_components=10, n_demos=H, n_input_features=3)
         gmm.fit(X_force)
-        mu_force, sigma_force = gmm.predict(x_gmr)
+        a = gmm.means.T
+        b = gmm.covariances.T
+        c = gmm.priors.T
+        gmmm = GMM(n_components=10, random_state=0)
+        gmmm.from_samples(X_force.T)
+        d = gmmm.means
+        e = gmmm.covariances
+        f = gmmm.priors
+
+        mu_force, sigma_force = gmm.predict(x_gmr_force)
         np.save(join(ROOT, 'trained_models/mu_force.npy'), mu_force)
         np.save(join(ROOT, 'trained_models/sigma_force.npy'), sigma_force)
     # KMP on the position
@@ -97,8 +113,6 @@ def main():
         mu_pos_kmp, sigma_pos_kmp = kmp.predict(x_kmp) 
         np.save(join(ROOT, 'trained_models/mu_pos_kmp.npy'), mu_pos_kmp)
         np.save(join(ROOT, 'trained_models/sigma_pos_kmp.npy'), sigma_pos_kmp)
-        with open(join(ROOT, "trained_models/pos_kmp.pkl"), "wb") as file:
-            pickle.dump(kmp, file)
     # KMP on the orientation
     if rot_:
         kmp_dt = 0.01
@@ -108,23 +122,25 @@ def main():
         mu_rot_kmp, sigma_rot_kmp = kmp.predict(x_kmp)
         np.save(join(ROOT, 'trained_models/mu_rot_kmp.npy'), mu_rot_kmp)
         np.save(join(ROOT, 'trained_models/sigma_rot_kmp.npy'), sigma_rot_kmp)
-        quats_kmp = np.vstack((mu_rot_kmp[:3,:],np.zeros_like(mu_rot_kmp[0,:])))
+        kmp_quats = np.vstack((mu_rot_kmp[:3,:],np.zeros_like(mu_rot_kmp[0,:])))
+        kmp_rot_vectors = np.zeros_like(mu_rot_kmp[:3,:])
         for i in range(mu_rot_kmp.shape[1]):
-            quats_kmp[:, i] = (Quaternion.exp(mu_rot_kmp[:3, i])*qa).as_array()
-        np.save(join(ROOT, 'trained_models/mu_rot_kmp_quats.npy'), quats_kmp)
-        with open(join(ROOT, "trained_models/rot_kmp.pkl"), "wb") as file:
-            pickle.dump(kmp, file)
+            quat = (Quaternion.exp(mu_rot_kmp[:3, i])*qa)
+            kmp_rot_vectors[:,i] = quat.as_rotation_vector()
+            kmp_quats[:,i] = quat.as_array()
+        np.save(join(ROOT, 'trained_models/kmp_quats.npy'), kmp_quats)
+        np.save(join(ROOT, 'trained_models/kmp_rot_vectors.npy'), kmp_rot_vectors)
     # KMP on the force
     if force_:
         kmp_dt = 0.01
-        x_kmp = np.arange(kmp_dt, demo_dura, kmp_dt).reshape(1, -1)
+        """x_kmp = np.arange(kmp_dt, demo_dura, kmp_dt).reshape(1, -1)
         kmp = KMP(l=0.5, alpha=40, sigma_f=1, verbose=True)
         kmp.fit(x_gmr, mu_force, sigma_force)
         mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp)
         np.save(join(ROOT, 'trained_models/mu_force_kmp.npy'), mu_force_kmp)
         np.save(join(ROOT, 'trained_models/sigma_force_kmp.npy'), sigma_force_kmp)
         with open(join(ROOT, "trained_models/force_kmp.pkl"), "wb") as file:
-            pickle.dump(kmp, file)
+            pickle.dump(kmp, file)"""
     # Plot everything
     fig, ax = plt.subplots(3, 3, figsize=(16,8))
     for dataset in datasets:
@@ -136,11 +152,11 @@ def main():
             ax[0, i].errorbar(x=t_gmr, y=mu_pos[i, :], yerr=np.sqrt(sigma_pos[i,i,:]), color='red', alpha=0.35)
             ax[0, i].errorbar(x=t_kmp, y=mu_pos_kmp[i, :], yerr=np.sqrt(sigma_pos_kmp[i,i,:]), color='green', alpha=0.25)
         if rot_:            
-            ax[1, i].plot(t_gmr, quats[i+1, :], color='red')
-            ax[1, i].plot(t_kmp, quats_kmp[i+1, :], color='green')
+            ax[1, i].plot(t_gmr, gmr_quats[i+1, :], color='red')
+            ax[1, i].plot(t_kmp, kmp_quats[i+1, :], color='green')
         if force_:
             ax[2, i].errorbar(x=t_gmr, y=mu_force[i, :], yerr=np.sqrt(sigma_force[i,i,:]), color='red', alpha=0.35)
-            ax[2, i].errorbar(x=t_kmp, y=mu_force_kmp[i, :], yerr=np.sqrt(sigma_force_kmp[i,i,:]), color='green', alpha=0.25)
+            #ax[2, i].errorbar(x=t_kmp, y=mu_force_kmp[i, :], yerr=np.sqrt(sigma_force_kmp[i,i,:]), color='green', alpha=0.25)
     fig.suptitle('Single point task - GMR and KMP')
     fig.tight_layout()
     plots_path = join(ROOT, 'media/single_point_task_kmp.png')

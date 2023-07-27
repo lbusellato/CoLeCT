@@ -33,17 +33,12 @@ def hex12_callback(wrench) -> None:
     current_force = wrench[:3]
 
 def main():    
-    rtde_c = rtde_control.RTDEControlInterface("192.168.1.11")
-    rtde_r = rtde_receive.RTDEReceiveInterface("192.168.1.11")
+    #rtde_c = rtde_control.RTDEControlInterface("192.168.1.11")
+    #rtde_r = rtde_receive.RTDEReceiveInterface("192.168.1.11")
 
     # Pull the KMP trajectories
     pos = np.load(join(ROOT, 'trained_models/mu_pos_kmp.npy'))
-    if not exists(join(ROOT, 'controller/mu_rot_kmp_axis_angle.npy')):
-        rot = np.load(join(ROOT, 'trained_models/mu_rot_kmp_quats.npy'))
-        rot = to_axis_angle(rot)
-        np.save(join(ROOT, 'controller/mu_rot_kmp_axis_angle.npy'), rot)
-    else:
-        rot = np.load(join(ROOT, 'controller/mu_rot_kmp_axis_angle.npy'))
+    rot = np.load(join(ROOT, 'trained_models/kmp_rot_vectors.npy'))
     poses = np.vstack((pos[:3,:], rot))
     poses[2, :] -= 0.0045 # This is just because the single point task has a wrong origin offset
     forces = np.load(join(ROOT, 'trained_models/mu_force_kmp.npy'))[:3,:]
@@ -80,7 +75,7 @@ def main():
     if not exists(join(ROOT, 'controller/KP_pos_gains.npy')):
         A = np.block([[np.zeros((3,3)), np.eye(3)],[np.zeros((3,3)), np.zeros((3,3))]])
         B = np.block([[np.zeros((3,3))],[np.eye(3)]])
-        gain_magnitude_penalty = 20000
+        gain_magnitude_penalty = 10000
         R = np.eye(3)*gain_magnitude_penalty
         # Gain computation
         KP_pos = []
