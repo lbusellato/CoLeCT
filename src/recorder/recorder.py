@@ -21,7 +21,7 @@ class Recorder():
     def __init__(self, verbose: bool = False) -> None:
         self._logger = logging.getLogger(__name__)
         self._logger.setLevel(level=logging.DEBUG if verbose else logging.INFO)
-        self.nnc = NatNetClient(server_address='10.85.15.149',
+        self.nnc = NatNetClient(server_address='10.85.15.142',
                                 rigid_body_listener=self.nnc_callback)
         self.hex12 = HEX12(callback=self.hex12_callback)
         self.reading = np.zeros(14)

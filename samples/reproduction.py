@@ -30,19 +30,20 @@ def to_axis_angle(rotations):
 
 current_force = np.zeros(3)
 def hex12_callback(wrench) -> None:
-    current_force = wrench[:3]
+    global current_force
+    current_force = np.round(wrench[:3], 3)
 
 def main():    
-    #rtde_c = rtde_control.RTDEControlInterface("192.168.1.11")
-    #rtde_r = rtde_receive.RTDEReceiveInterface("192.168.1.11")
+    rtde_c = rtde_control.RTDEControlInterface("192.168.1.11")
+    rtde_r = rtde_receive.RTDEReceiveInterface("192.168.1.11")
 
     # Pull the KMP trajectories
     pos = np.load(join(ROOT, 'trained_models/mu_pos_kmp.npy'))
     rot = np.load(join(ROOT, 'trained_models/kmp_rot_vectors.npy'))
     poses = np.vstack((pos[:3,:], rot))
-    poses[2, :] -= 0.0045 # This is just because the single point task has a wrong origin offset
+    poses[2, :] -= 0.005 # This is just because the single point task has a wrong origin offset
     forces = np.load(join(ROOT, 'trained_models/mu_force_kmp.npy'))[:3,:]
-    # Pull the KMP uncertainties
+    """# Pull the KMP uncertainties
     pos_uncert = np.load(join(ROOT, 'trained_models/sigma_pos_kmp.npy'))
     pos_uncert = symmetrize(pos_uncert)
     rot_uncert = np.load(join(ROOT, 'trained_models/sigma_rot_kmp.npy'))
@@ -135,16 +136,17 @@ def main():
         np.save(join(ROOT, 'controller/KI_force_gains.npy'), KI_force)
     else:
         KP_force = np.load(join(ROOT, 'controller/KP_force_gains.npy'))
-        KI_force = np.load(join(ROOT, 'controller/KI_force_gains.npy'))
+        KI_force = np.load(join(ROOT, 'controller/KI_force_gains.npy'))"""
     #These look like good values
     KD_pos = np.eye(3)*0.5
     KP_pos = np.eye(3)*50
     KD_rot = np.eye(3)*0.1
     KP_rot = np.eye(3)*5
-    KP_force = np.eye(3)*0.1
-    KI_force = np.eye(3)*0.001
+    KP_force = np.eye(3)*0.0001
+    KI_force = np.eye(3)*0.0008
     # Setup the force sensor
     hex12 = HEX12(callback=hex12_callback)
+    hex12.start()
     # Go home
     rtde_c.moveJ([0.0, -np.pi/2, 0.0, -np.pi/2, 0.0, 0.0])
     # Go to the start of the trajectory
@@ -152,14 +154,22 @@ def main():
     rtde_c.moveJ_IK(pose=pose, speed = 0.5)
     # Execute the trajectory
     dt = 1/500
+    i_force_error = 0
+    global current_force
+    recorded_poses = []
+    recorded_speeds = []
+    recorded_forces = []
     for i in range(poses.shape[-1]):
         t_start = rtde_c.initPeriod()
         # Get the state of the robot
         current_pose = rtde_r.getActualTCPPose()
         current_speed = rtde_r.getActualTCPSpeed()
+        recorded_poses.append(current_pose)
+        recorded_speeds.append(current_speed)
+        recorded_forces.append(current_force)
         # Compute the force errors
         force_error = (forces[:,i] - current_force).reshape(-1,1)
-        i_force_error = i_force_error + force_error * dt
+        i_force_error += force_error * dt
         # Output of the outer force loop
         dx_force = (KP_force@force_error + KI_force@i_force_error).flatten()
         # Compute the pose error
@@ -176,6 +186,9 @@ def main():
     # Go home
     rtde_c.moveJ([0.0, -np.pi/2, 0.0, -np.pi/2, 0.0, 0.0])
     rtde_c.stopScript()
+    np.save(join(ROOT, "controller/recorded_poses.npy"), np.array(recorded_poses))
+    np.save(join(ROOT, "controller/recorded_speeds.npy"), np.array(recorded_speeds))
+    np.save(join(ROOT, "controller/recorded_forces.npy"), np.array(recorded_forces))
 
 if __name__ == '__main__':
     main()
