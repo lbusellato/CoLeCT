@@ -200,7 +200,7 @@ def align_datasets(datasets_path: str = ''):
                 point.timestamp = (j + 1) * 0.1
             np.save(join(ROOT, datasets_path, f'dataset{i:02d}.npy'), dataset[compute_alignment_path(cost_matrix)])
 
-def load_datasets(datasets_path: str='', regex = r'tdataset(\d{2})\.npy') -> np.ndarray:
+def load_datasets(datasets_path: str='', regex = r'dataset(\d{2})\.npy') -> np.ndarray:
     """Load all datasets in the given folder.
 
     Parameters
