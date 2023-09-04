@@ -72,9 +72,12 @@ Besides the trajectory recording with the handheld tool, a recording must be mad
 Recordings are saved in .csv format in the recordings folder. In principle, the recording step can be done with other methods, as long as the produced .csv file has the header:
 
     timestamp,pos_x,pos_y,pos_z,quat_x,quat_y,quat_z,quat_w,force_x,force_y,force_z,torque_x,torque_y,torque_z
-  
 
+Where *pos_N* are the three cartesian coordinates, *quat_N* are the four components of the orientation expressed in quaternion form, *force_N* are the three components of the force and *torque_N* are the three components of the torque.
+  
 ## Dataset postprocessing
+
+
 
 ## Learning from demonstration
 

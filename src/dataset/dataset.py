@@ -3,13 +3,13 @@ import numpy as np
 import re
 
 from os import listdir
-from os.path import abspath, dirname, join
+from os.path import abspath, dirname, join, isfile
 from src.datatypes import Point, Quaternion
 from tslearn.metrics import soft_dtw_alignment
 
 
 ROOT = dirname(dirname(dirname(abspath(__file__))))
-UR5_base_position = np.array([1.808655,	0.885495,	1.448405])
+
 def create_dataset(demonstrations_path: str = '', demonstration_regex: str = r'') -> None:
     """Process a set of demonstration recordings into an usable dataset
 
@@ -127,14 +127,27 @@ def interpolate_datasets(datasets_path: str = ''):
         np.save(join(ROOT, datasets_path, file), dataset)
 
 
-def to_base_frame(datasets_path: str = '') -> None:
+def to_base_frame(datasets_path: str = '', base_frame_recording_path : str = '') -> None:
     """Transform the coordinates to the base frame of the robot
 
     Parameters
     ----------
     datasets_path : str, default = ''
         The path to the datasets, relative to ROOT.
+    base_frame_recording_path : str, default = ''
+        The path to the recording of the robot base frame, relative to ROOT.
     """
+    # Recover the position of the base frame of the robot
+    files = [f for f in listdir(base_frame_recording_path) if isfile(join(base_frame_recording_path,f))]
+    base_file = files[0]
+    UR5_base_position = np.zeros(3)
+    with open(join(base_frame_recording_path, base_file)) as csv_file:
+        reader = csv.DictReader(csv_file)
+        for row in reader:
+            UR5_base_position[0] = float(row['pos_x'])
+            UR5_base_position[1] = float(row['pos_y'])
+            UR5_base_position[2] = float(row['pos_z'])        
+    # Recover the recordings
     datasets_path = join(ROOT, datasets_path)
     regex = r'dataset(\d{2})\.npy'
     files = [f for f in listdir(datasets_path) if re.match(regex, f) is not None]
@@ -149,7 +162,6 @@ def to_base_frame(datasets_path: str = '') -> None:
     for file in files:
         dataset = np.load(join(datasets_path, file), allow_pickle=True)
         new = as_array(dataset)
-        # TODO: this would probably look better with a T matrix instead of hardcoding the rototranslation
         # Translation
         new[:, 1:4] -= UR5_base_position
         # Rotation
