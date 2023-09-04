@@ -1,7 +1,7 @@
 import logging
 import numpy as np
 
-from numpy.linalg import inv
+from numpy.linalg import inv, det
 from numpy.typing import ArrayLike
 from typing import Tuple
 
@@ -18,11 +18,13 @@ class GaussianMixtureModel():
                  n_components: int = 10,
                  n_demos: int = 5,
                  n_input_features: int = 1,
+                 diag_reg_factor: float = 1e-5,
                  dt: float = 0.1) -> None:
         self.n_components = n_components
         self.n_demos = n_demos
         self.n_input_features = n_input_features
         self.dt = dt
+        self.diag_reg_factor = diag_reg_factor
         self.logger = logging.getLogger(__name__)
         self.initialized = False
 
@@ -36,7 +38,7 @@ class GaussianMixtureModel():
             The dataset to initialize the GMM with.
         """
         n_features, n_samples = data.shape
-        diag_reg_factor = np.eye(n_features) * 1e-8
+        diag_reg_factor = np.eye(n_features) * self.diag_reg_factor
         # Clustering data to initialize the GMM
         labels = np.arange(n_samples//self.n_demos) % self.n_components
         labels.sort()
@@ -79,7 +81,7 @@ class GaussianMixtureModel():
         n_features, n_samples = data.shape
         data_cntr = data.T - np.tile(mean.T, (n_samples, 1))
         pdf = np.sum(data_cntr@inv(cov)*data_cntr, axis=1)
-        pdf = np.exp(-0.5*pdf)/np.sqrt(np.abs(np.linalg.det(cov))*(2*np.pi)**n_features + REALMIN)
+        pdf = np.exp(-0.5*pdf)/np.sqrt(np.abs(det(cov))*(2*np.pi)**n_features + REALMIN)
         return pdf
 
     def likelihood(self, data: ArrayLike) -> ArrayLike:
@@ -114,7 +116,7 @@ class GaussianMixtureModel():
         min_it = 5
         max_it = 100
         tol = 1e-4
-        diag_reg_factor = np.eye(self.n_features)*1e-4
+        diag_reg_factor = np.eye(self.n_features)*self.diag_reg_factor
         LL = np.zeros((max_it))
         converged = False
         for it in range(max_it):
@@ -152,12 +154,12 @@ class GaussianMixtureModel():
             The covariance matrices associated to each input point.
         """
         I, N = data.shape
-        n_output_features = self.n_features - I
-        diag_reg_factor = np.eye(n_output_features)*1e-8
+        O = self.n_features - I
+        diag_reg_factor = np.eye(O)*self.diag_reg_factor
         # Initialize needed arrays
-        mu_tmp = np.zeros((n_output_features, self.n_components))
-        means = np.zeros((n_output_features, N))
-        covariances = np.zeros((n_output_features, n_output_features, N))
+        mu_tmp = np.zeros((O, self.n_components))
+        means = np.zeros((O, N))
+        covariances = np.zeros((O, O, N))
         H = np.zeros((self.n_components, N))
         for t in range(N):
             # Activation weight
@@ -173,10 +175,9 @@ class GaussianMixtureModel():
                 means[:,t] += H[i,t]*mu_tmp[:,i]
             # Conditional covariances
             for i in range(self.n_components):
-                if I == 1:
-                    sigma_tmp = self.covariances[I:,I:,i] - ((self.covariances[I:,:I,i]/self.covariances[:I,:I,i]).reshape(-1,1))@self.covariances[:I,I:,i].reshape(-1,1).T
-                else:
-                    sigma_tmp = self.covariances[I:,I:,i] - ((self.covariances[I:,:I,i]/self.covariances[:I,:I,i]))@self.covariances[:I,I:,i].T
+                sigma_tmp = self.covariances[I:,I:,i] - \
+                            self.covariances[I:,:I,i]@inv(self.covariances[:I,:I,i])@self.covariances[:I,I:,i]
                 covariances[:,:,t] += H[i,t]*(sigma_tmp + np.outer(mu_tmp[:,i],mu_tmp[:,i]))
             covariances[:,:,t] += diag_reg_factor - np.outer(means[:,t],means[:,t])
+        self.logger.info("GMR done.")
         return means, covariances

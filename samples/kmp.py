@@ -66,14 +66,14 @@ def main():
     qa = datasets[0][0].rot
     # GMM/GMR on the position
     if pos_:
-        gmm = GaussianMixtureModel(n_components=10, n_demos=H, n_input_features=1)
+        gmm = GaussianMixtureModel(n_components=10, n_demos=H, n_input_features=1, diag_reg_factor=1e-6)
         gmm.fit(X_pos)
         mu_pos, sigma_pos = gmm.predict(x_gmr)
         np.save(join(ROOT, 'trained_models/mu_pos.npy'), mu_pos)
         np.save(join(ROOT, 'trained_models/sigma_pos.npy'), sigma_pos)
     # GMM/GMR on the orientation
     if rot_:
-        gmm = GaussianMixtureModel(n_components=10, n_demos=H, n_input_features=1)
+        gmm = GaussianMixtureModel(n_components=10, n_demos=H, n_input_features=1, diag_reg_factor=1e-6)
         gmm.fit(X_rot)
         mu_rot, sigma_rot = gmm.predict(x_gmr)
         np.save(join(ROOT, 'trained_models/mu_rot.npy'), mu_rot)
@@ -88,9 +88,8 @@ def main():
         np.save(join(ROOT, 'trained_models/gmr_rot_vectors.npy'), gmr_rot_vectors)
     # GMM/GMR on the force
     if force_:
-        gmm = GaussianMixtureModel(n_components=10, n_demos=H, n_input_features=3)
+        gmm = GaussianMixtureModel(n_components=10, n_demos=H, n_input_features=6, diag_reg_factor=1e-5)
         gmm.fit(X_force)
-        #mu_force, sigma_force = gmm.predict(x_gmr)
         mu_force, sigma_force = gmm.predict(np.vstack((mu_pos[:3,:], mu_rot[:3,:])))
         np.save(join(ROOT, 'trained_models/mu_force.npy'), mu_force)
         np.save(join(ROOT, 'trained_models/sigma_force.npy'), sigma_force)
@@ -127,7 +126,7 @@ def main():
         kmp = KMP(l=0.5, alpha=40, sigma_f=1, verbose=True)
         #kmp.fit(x_gmr, mu_force, sigma_force)
         kmp.fit(np.vstack((mu_pos_kmp[:3,:],mu_rot_kmp[:3,:])), mu_force, sigma_force)
-        mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp)
+        mu_force_kmp, sigma_force_kmp = kmp.predict(np.vstack((mu_pos_kmp[:3,:],mu_rot_kmp[:3,:])))
         np.save(join(ROOT, 'trained_models/mu_force_kmp.npy'), mu_force_kmp)
         np.save(join(ROOT, 'trained_models/sigma_force_kmp.npy'), sigma_force_kmp)
     # Plot everything
@@ -144,7 +143,7 @@ def main():
             ax[1, i].plot(t_gmr, gmr_quats[i+1, :], color='red')
             ax[1, i].plot(t_kmp, kmp_quats[i+1, :], color='green')
         if force_:
-            ax[2, i].errorbar(x=t_gmr, y=mu_force[i, :], yerr=np.sqrt(sigma_force[i,i,:]), color='red', alpha=0.35)
+            ax[2, i].errorbar(x=np.arange(mu_force.shape[1])*demo_dura/mu_force.shape[1], y=mu_force[i, :], yerr=np.sqrt(sigma_force[i,i,:]), color='red', alpha=0.35)
             ax[2, i].errorbar(x=t_kmp, y=mu_force_kmp[i, :], yerr=np.sqrt(sigma_force_kmp[i,i,:]), color='green', alpha=0.25)
     fig.suptitle('Single point task - GMR and KMP')
     fig.tight_layout()
