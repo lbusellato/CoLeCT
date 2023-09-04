@@ -29,3 +29,4 @@ tbb-devel==2021.9.0
 threadpoolctl==3.1.0
 tslearn==0.5.3.2
 zipp==3.16.0
+-e git+ssh://git@github.com/lbusellato/CoLeCT.git@ca24a893382e77faa9df30b9de71d05b260c12dd#egg=CoLeCT

@@ -36,13 +36,11 @@ class KMP:
                  l: float = 0.5,
                  alpha: float = 40,
                  sigma_f: float = 1.0,
-                 tol: float = 0.0005,
                  verbose: bool = False) -> None:
         self.trained = False
         self.l = l
         self.alpha = alpha
         self.sigma_f = sigma_f
-        self.tol = tol
         self.kl_divergence = None
         self._logger = logging.getLogger(__name__)
         self._logger.setLevel(level=logging.DEBUG if verbose else logging.INFO)

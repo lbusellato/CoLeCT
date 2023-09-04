@@ -26,7 +26,7 @@ force_ = True
 def main():
     # Showcase GMR and KMP on the single point task dataset
     # Load the demonstrations
-    datasets = load_datasets('demonstrations/single_point_task', regex=r'tdataset(\d{2})\.npy')
+    datasets = load_datasets('demonstrations/single_point_task')
     # Prepare the data for GMM/GMR
     H = len(datasets)  # Number of demonstrations
     N = len(datasets[0]) // subsample  # Length of each demonstration

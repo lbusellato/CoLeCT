@@ -114,6 +114,7 @@ def interpolate_datasets(datasets_path: str = ''):
         for i in range(3):
             interp_dataset[missing_indices, i + 1] = np.interp(time_missing, time_known, position_known[:, i])
         # Interpolate the orientation (quaternion)
+        # TODO: this is a big no-no, I should use slerp to interpolate quaternions
         for i in range(4):
             interp_dataset[missing_indices, i + 4] = np.interp(time_missing, time_known, orientation_known[:, i])
         if qa is None:
