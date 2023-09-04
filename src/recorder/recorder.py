@@ -18,7 +18,7 @@ ROOT = dirname(dirname(dirname(abspath(__file__))))
 
 
 class Recorder():
-    def __init__(self, verbose: bool = False) -> None:
+    def __init__(self, server_address : str = '10.85.15.142', verbose : bool = False) -> None:
         self._logger = logging.getLogger(__name__)
         self._logger.setLevel(level=logging.DEBUG if verbose else logging.INFO)
         self.nnc = NatNetClient(server_address='10.85.15.142',
@@ -41,7 +41,7 @@ class Recorder():
             if cmd == 'q':
                 return 0
         header = ['timestamp', 'pos_x', 'pos_y', 'pos_z',
-                  'quat_w', 'quat_x', 'quat_y', 'quat_z',
+                  'quat_x', 'quat_y', 'quat_z','quat_w', 
                   'force_x', 'force_y', 'force_z',
                   'torque_x', 'torque_y', 'torque_z']
         with open(self.recording_file, 'x') as f:

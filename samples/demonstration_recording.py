@@ -2,7 +2,7 @@ from src.recorder import Recorder
 
 def main():
     # Demonstration recording
-    recorder = Recorder()
+    recorder = Recorder(server_address='10.85.15.142')
     recorder.run()
 
 
