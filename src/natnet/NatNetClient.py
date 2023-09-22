@@ -7,7 +7,7 @@ import socket
 import sys
 import time
 
-from typing import Callable, List
+from typing import Callable, List, Tuple
 from threading import Thread
 
 logging.basicConfig(
@@ -489,7 +489,7 @@ class NatNetClient():
             socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP, value)
         return data_socket
 
-    def _unpack_rigid_body(self, data: bytes, rb_num: int) -> tuple[int, RigidBody]:
+    def _unpack_rigid_body(self, data: bytes, rb_num: int) -> Tuple[int, RigidBody]:
         id = int.from_bytes(data[:4], byteorder='little')
         offset = 4
         self._logger.debug(f'Rigid Body {rb_num} ID: {id}')
