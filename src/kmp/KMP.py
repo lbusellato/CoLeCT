@@ -1,12 +1,11 @@
 import copy
 import logging
-import math
 import numpy as np
 
 from numpy.linalg import inv, norm
 from numpy.typing import ArrayLike
 from typing import Tuple
-
+import time
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -62,16 +61,19 @@ class KMP:
         kernel : array-like of shape (n_features,n_features)
             The kernel matrix evaluated in the provided input pair.
         """
+        def kernel(s1, s2):
+            return np.exp(-self.sigma_f*(s1-s2)**2)
+        # Compute the kernels
         dt = 0.001
-        t1dt = t1 + dt
-        t2dt = t2 + dt
-        ktt = np.exp(-self.sigma_f*norm(t1-t2)**2)
-        ktdt_tmp = np.exp(-self.sigma_f*norm(t1-t2dt)**2)
+        ktt = kernel(t1,t2)[0]
+        ktdt_tmp = kernel(t1,t2+dt)[0]
+        kdtt_tmp = kernel(t1+dt,t2)[0]
+        kdtdt_tmp = kernel(t1+dt,t2+dt)[0]
+        # Components of the matrix
         ktdt = (ktdt_tmp - ktt)/dt
-        kdtt_tmp = np.exp(-self.sigma_f*norm(t1dt-t2)**2)
         kdtt = (kdtt_tmp - ktt)/dt
-        kdtdt_tmp = np.exp(-self.sigma_f*norm(t1dt-t2dt)**2)
         kdtdt = (kdtdt_tmp - ktdt_tmp - kdtt_tmp + ktt)/dt**2
+        # Fill the kernel matrix
         kernel_matrix = np.zeros((self.O,self.O))
         dim = self.O//2
         for i in range(dim):
@@ -99,14 +101,14 @@ class KMP:
         self.s = copy.deepcopy(X)
         self.xi = copy.deepcopy(mu)
         self.sigma = copy.deepcopy(var)
-        self.O = self.xi.shape[0]
-        self.N = self.xi.shape[1]
+        self.O, self.N = self.xi.shape
         k = np.zeros((self.N*self.O, self.N*self.O))
         # Construct the estimator
         for i in range(self.N):
-            for j in range(self.N):
+            for j in range(i,self.N):
                 kernel = self.__kernel_matrix(self.s[:, i], self.s[:, j])
                 k[i*self.O:(i+1)*self.O, j*self.O:(j+1)*self.O] = kernel
+                k[j*self.O:(j+1)*self.O, i*self.O:(i+1)*self.O] = kernel.T
                 if i == j:
                     # Add the regularization terms on the diagonal
                     k[j*self.O:(j+1)*self.O, i*self.O:(i+1) * self.O] += self.l*self.sigma[:, :, i]

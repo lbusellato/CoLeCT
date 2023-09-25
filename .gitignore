@@ -2,3 +2,4 @@ colect-venv/
 **/__pycache__/
 .vscode/
 CoLeCT.egg-info/
+wandb/

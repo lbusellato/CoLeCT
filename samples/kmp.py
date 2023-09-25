@@ -61,7 +61,7 @@ def main():
         force[1,:] = np.gradient(force[1,:])/gmm_dt
         force[2,:] = np.gradient(force[2,:])/gmm_dt
     dY_force = np.hstack(forces)
-    X_force = np.vstack((Y_pos, Y_rot, Y_force, dY_force))
+    X_force = np.vstack((X, Y_force, dY_force))
     # Recover the auxiliary quaternion  
     qa = datasets[0][0].rot
     # GMM/GMR on the position
@@ -90,7 +90,7 @@ def main():
     if force_:
         gmm = GaussianMixtureModel(n_components=10, n_demos=H, n_input_features=6, diag_reg_factor=1e-5)
         gmm.fit(X_force)
-        mu_force, sigma_force = gmm.predict(np.vstack((mu_pos[:3,:], mu_rot[:3,:])))
+        mu_force, sigma_force = gmm.predict(x_gmr)
         np.save(join(ROOT, 'trained_models/mu_force.npy'), mu_force)
         np.save(join(ROOT, 'trained_models/sigma_force.npy'), sigma_force)
     # KMP on the position
@@ -124,9 +124,8 @@ def main():
         kmp_dt = 0.01
         x_kmp = np.arange(kmp_dt, demo_dura, kmp_dt).reshape(1, -1)
         kmp = KMP(l=0.5, alpha=40, sigma_f=1, verbose=True)
-        #kmp.fit(x_gmr, mu_force, sigma_force)
-        kmp.fit(np.vstack((mu_pos_kmp[:3,:],mu_rot_kmp[:3,:])), mu_force, sigma_force)
-        mu_force_kmp, sigma_force_kmp = kmp.predict(np.vstack((mu_pos_kmp[:3,:],mu_rot_kmp[:3,:])))
+        kmp.fit(x_gmr, mu_force, sigma_force)
+        mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp)
         np.save(join(ROOT, 'trained_models/mu_force_kmp.npy'), mu_force_kmp)
         np.save(join(ROOT, 'trained_models/sigma_force_kmp.npy'), sigma_force_kmp)
     # Plot everything

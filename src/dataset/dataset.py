@@ -74,7 +74,7 @@ def trim_datasets(datasets_path: str = '') -> None:
         # Figure out the indexes to slice the dataset with
         points = np.array([point.x for point in dataset])
         i = np.where(points != 0)[0][0]
-        j = dataset.shape[0] - np.where(reversed(points) != 0)[0][0]
+        j = dataset.shape[0] - np.where(np.array(list(reversed(points))) != 0)[0][0]
         trimmed_dataset = dataset[i:j]
         np.save(join(ROOT, datasets_path, file), trimmed_dataset)
 
@@ -126,7 +126,6 @@ def interpolate_datasets(datasets_path: str = ''):
                                Quaternion.from_array([w, qx, qy, qz]), quat_eucl, 
                                fx, fy, fz, mx, my, mz)
         np.save(join(ROOT, datasets_path, file), dataset)
-
 
 def to_base_frame(datasets_path: str = '', base_frame_recording_path : str = '') -> None:
     """Transform the coordinates to the base frame of the robot
