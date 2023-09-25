@@ -113,19 +113,65 @@ def interpolate_datasets(datasets_path: str = ''):
         # Interpolate the position
         for i in range(3):
             interp_dataset[missing_indices, i + 1] = np.interp(time_missing, time_known, position_known[:, i])
-        # Interpolate the orientation (quaternion)
-        # TODO: this is a big no-no, I should use slerp to interpolate quaternions
-        for i in range(4):
-            interp_dataset[missing_indices, i + 4] = np.interp(time_missing, time_known, orientation_known[:, i])
+        # Interpolate the orientation (quaternion) using SLERP
+        interp_dataset[missing_indices, 4:8] = slerp(time_missing, time_known, orientation_known)
         if qa is None:
             qa = Quaternion.from_array(orientation_known[0])
         for i in missing_indices:
-            t, x, y, z, w, qx, qy, qz, qe1, qe2, qe3, fx, fy, fz, mx, my, mz = interp_dataset[i]
+            t, x, y, z, w, qx, qy, qz, _, _, _, fx, fy, fz, mx, my, mz = interp_dataset[i]
             quat_eucl = (Quaternion.from_array([w, qx, qy, qz])*~qa).log()
             dataset[i] = Point(t, x, y, z, 
                                Quaternion.from_array([w, qx, qy, qz]), quat_eucl, 
                                fx, fy, fz, mx, my, mz)
         np.save(join(ROOT, datasets_path, file), dataset)
+        
+def slerp(time_missing : np.ndarray, time_known : np.ndarray, orientation_known : np.ndarray) -> np.ndarray:
+    """Spherical linear interpolation of quaternions.
+
+    Parameters
+    ----------
+    time_missing : np.ndarray
+        Array of the timestamps of the missing orientations.
+    time_known : np.ndarray
+        Array of the timestamps of the known orientations.
+    orientation_known : np.ndarray
+        Array of known quaternions
+
+    Returns
+    -------
+    np.ndarray
+        The array of interpolated quaternions.
+    """
+    
+    out = []
+    for i in range(orientation_known.shape[0] - 1):
+        # Initial and final quaternion, normalized
+        q1 = orientation_known[i,:]
+        q2 = orientation_known[i+1,:]
+        q1 /= np.linalg.norm(q1)
+        q2 /= np.linalg.norm(q2)
+        # Compute how many interpolation steps we need
+        n = np.where((time_missing >= time_known[i]) & (time_missing <= time_known[i + 1]))[0].shape[0]
+        dot_product = np.dot(q1, q2)
+        if dot_product < 0.0:
+            # Switching the sign ensures that we take the shortest path on the quaternion sphere
+            q1 = -q1
+            dot_product = -dot_product
+        if dot_product > 0.99:
+            # They are basically the same quaternion
+            for _ in range(n):
+                out.append(q1)
+        else:
+            # Compute spherical linear interpolation between the quaternions
+            theta = np.arccos(dot_product)
+            # +2 to consider the initial and final quaternions, but only interpolate inbetween
+            time = np.linspace(0, n + 2)
+            for t in time[1:-1]:
+                q_interpolated = (np.sin((1 - t) * theta) / np.sin(theta)) * q1 + (np.sin(t * theta) / np.sin(theta)) * q2
+                out.append(q_interpolated / np.linalg.norm(q_interpolated))
+
+    out = np.vstack(out)
+    return out
 
 def to_base_frame(datasets_path: str = '', base_frame_recording_path : str = '') -> None:
     """Transform the coordinates to the base frame of the robot
