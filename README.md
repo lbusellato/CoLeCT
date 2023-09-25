@@ -42,7 +42,6 @@ To use the reproduction pipeline on UR5 robots, a real-time kernel and the SDU u
 
 ## TODO
 
-* #BUG Quaternion interpolation should be done with SLERP, not linear interpolation
 * #BUG KMP w/ pose as input, force as output is not working right
 * #FEATURE KMP w/ null-space projector
 * #FEATURE Threaded LQR gain computation

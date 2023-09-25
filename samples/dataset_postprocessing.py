@@ -48,9 +48,9 @@ def main():
     # Fill in the force-only samples by linearly interpolating the poses
     interpolate_datasets(path)
     # Align temporally the datasets with Soft-DTW
-    """align_datasets(path)
+    align_datasets(path)
     # Transform the coordinates to the base robot frame
-    to_base_frame(path)"""
+    to_base_frame(path, 'demonstrations')
     # Load the processed datasets
     processed = load_datasets(path)
     # Plot everything

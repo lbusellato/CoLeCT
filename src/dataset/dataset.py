@@ -223,7 +223,7 @@ def to_base_frame(datasets_path: str = '', base_frame_recording_path : str = '')
                 qa = new_quat
             new[i, 4:8] = new_quat.as_array()
             new[i, 8:11] = (new_quat*~qa).log()
-        np.save(join(ROOT, datasets_path, "t" + file), from_array(new))
+        np.save(join(ROOT, datasets_path, file), from_array(new))
 
 def compute_alignment_path(cost_matrix):
     """Computes the warping path from a cost matrix.
