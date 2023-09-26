@@ -5,7 +5,7 @@ import numpy as np
 from numpy.linalg import inv, norm
 from numpy.typing import ArrayLike
 from typing import Tuple
-import time
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -143,5 +143,41 @@ class KMP:
             xi[:, j] = np.squeeze((k@self._estimator@Y.reshape(-1,1)))
             sigma[:, :, j] = self.alpha*(self.__kernel_matrix(s[:, j], s[:, j]) - k@self._estimator@k.T)
         self._logger.info("KMP predict done.")
+        ratio = xi.shape[1] // self.xi.shape[1]
+        self.kl_divergence = self.multivariate_kl_divergence(xi[:,::ratio], sigma[:,:,::ratio])
         return xi, sigma
     
+    def multivariate_kl_divergence(self, means, covs):
+
+        # Get the number of samples (N)
+        N = means.shape[1]
+
+        # Calculate the KL divergence for each sample
+        kl_divergence = np.zeros(N)
+        for i in range(N):
+            mean1_i = means[:, i]
+            cov1_i = covs[:, :, i]
+            mean2_i = self.xi[:, i]
+            cov2_i = self.sigma[:, :, i]
+
+            # Calculate the determinant and inverse of the covariance matrices
+            det_cov1_i = np.linalg.det(cov1_i)
+            det_cov2_i = np.linalg.det(cov2_i)
+            inv_cov2_i = np.linalg.inv(cov2_i)
+
+            # Calculate the dimension of the multivariate distributions
+            dim = len(mean1_i)
+
+            # Calculate the KL divergence for the current sample
+            kl_divergence[i] = 0.5 * (np.trace(np.dot(inv_cov2_i, cov1_i)) + 
+                                    np.dot(np.dot((mean2_i - mean1_i).T, inv_cov2_i), (mean2_i - mean1_i)) - 
+                                    dim + np.log(det_cov2_i / det_cov1_i))
+
+        # Return the array of KL divergences for each sample
+        return np.sum(kl_divergence)
+
+
+
+
+
+
