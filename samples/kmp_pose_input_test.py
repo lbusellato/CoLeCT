@@ -66,15 +66,15 @@ def main():
     qa = datasets[0][0].rot
     # GMM/GMR on the position
     if pos_:
-        gmm = GaussianMixtureModel(n_components=10, n_demos=H, n_input_features=1, diag_reg_factor=1e-6)
-        gmm.fit(X_pos)
+        gmm = GaussianMixtureModel(n_components=10, n_demos=H, diag_reg_factor=1e-6)
+        gmm.fit(X_pos.T)
         mu_pos, sigma_pos = gmm.predict(x_gmr)
         np.save(join(ROOT, 'trained_models/mu_pos.npy'), mu_pos)
         np.save(join(ROOT, 'trained_models/sigma_pos.npy'), sigma_pos)
     # GMM/GMR on the orientation
     if rot_:
-        gmm = GaussianMixtureModel(n_components=10, n_demos=H, n_input_features=1, diag_reg_factor=1e-6)
-        gmm.fit(X_rot)
+        gmm = GaussianMixtureModel(n_components=10, n_demos=H, diag_reg_factor=1e-6)
+        gmm.fit(X_rot.T)
         mu_rot, sigma_rot = gmm.predict(x_gmr)
         np.save(join(ROOT, 'trained_models/mu_rot.npy'), mu_rot)
         np.save(join(ROOT, 'trained_models/sigma_rot.npy'), sigma_rot)
@@ -88,8 +88,8 @@ def main():
         np.save(join(ROOT, 'trained_models/gmr_rot_vectors.npy'), gmr_rot_vectors)
     # GMM/GMR on the force
     if force_:
-        gmm = GaussianMixtureModel(n_components=10, n_demos=H, n_input_features=6, diag_reg_factor=1e-6)
-        gmm.fit(X_force)
+        gmm = GaussianMixtureModel(n_components=10, n_demos=H, diag_reg_factor=1e-6)
+        gmm.fit(X_force.T)
         mu_force, sigma_force = gmm.predict(np.vstack((mu_pos[:3,:], mu_rot[:3,:])))
         np.save(join(ROOT, 'trained_models/mu_force.npy'), mu_force)
         np.save(join(ROOT, 'trained_models/sigma_force.npy'), sigma_force)
