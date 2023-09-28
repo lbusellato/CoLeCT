@@ -83,8 +83,8 @@ def main():
     fig, ax = plt.subplots(3, 3, figsize=(16,8))
     for dataset in datasets:
         plot_demo(ax, dataset, demo_duration)
-    t_gmr = np.arange(gmm_dt, demo_duration, gmm_dt)
-    t_kmp = np.arange(kmp_dt, demo_duration, kmp_dt)
+    t_gmr = x_gmr.flatten()
+    t_kmp = x_kmp.flatten()
     for i in range(3):
         ax[0, i].errorbar(x=t_gmr, y=mu_pos[i, :], yerr=np.sqrt(sigma_pos[i,i,:]), color='red', alpha=0.35)
         ax[0, i].errorbar(x=t_kmp, y=mu_pos_kmp[i, :], yerr=np.sqrt(sigma_pos_kmp[i,i,:]), color='green', alpha=0.25)          
@@ -162,7 +162,7 @@ def plot_demo(ax: plt.Axes, demonstration: np.ndarray, duration: float, dt: floa
         Trajectory time step, used to correctly display time.
     """
     
-    time = np.arange(dt, duration - dt, dt)
+    time = np.arange(dt, duration, dt)
     # Recover data
     x = [p.x for p in demonstration]
     y = [p.y for p in demonstration]
