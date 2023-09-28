@@ -162,7 +162,7 @@ def plot_demo(ax: plt.Axes, demonstration: np.ndarray, duration: float, dt: floa
         Trajectory time step, used to correctly display time.
     """
     
-    time = np.arange(dt, duration, dt)
+    time = np.arange(dt, duration - dt, dt)
     # Recover data
     x = [p.x for p in demonstration]
     y = [p.y for p in demonstration]
