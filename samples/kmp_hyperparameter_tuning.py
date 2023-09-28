@@ -5,6 +5,7 @@ import wandb
 from os.path import dirname, abspath
 from src.dataset import load_datasets
 from src.mixture import GaussianMixtureModel
+from src.kmp import KMP
 
 wandb.login()
 
@@ -39,28 +40,31 @@ for quat_eucl in quats_eucl:
     quat_eucl[2,:] = np.gradient(quat_eucl[2,:])/gmm_dt
 dY_rot = np.hstack(quats_eucl)
 X_rot = np.vstack((X, Y_rot, dY_rot))
-Y_force = np.vstack([p.force for dataset in datasets for p in dataset[::subsample]]).T
-# Compute the derivatives of the forces
-forces = np.split(copy.deepcopy(Y_force), H, axis=1)
-for force in forces:
-    force[0,:] = np.gradient(force[0,:])/gmm_dt
-    force[1,:] = np.gradient(force[1,:])/gmm_dt
-    force[2,:] = np.gradient(force[2,:])/gmm_dt
-dY_force = np.hstack(forces)
-X_force = np.vstack((Y_pos, Y_rot, Y_force, dY_force))
+demo_dura = gmm_dt * (N + 1) # Duration of each demonstration
+kmp_dt = 0.01
+x_kmp = np.arange(kmp_dt, demo_dura, kmp_dt).reshape(1, -1)
+
+# GMM/GMR on the position
+gmm = GaussianMixtureModel(n_components=5, n_demos=H, diag_reg_factor=1e-6)
+gmm.fit(X_pos.T)
+mu_pos, sigma_pos = gmm.predict(x_gmr)
+# GMM/GMR on the orientation
+gmm = GaussianMixtureModel(n_components=3, n_demos=H, diag_reg_factor=1e-6)
+gmm.fit(X_rot.T)
+mu_rot, sigma_rot = gmm.predict(x_gmr)
 
 # 1: Define objective/training function
-def objective(data, config):
-    gmm = GaussianMixtureModel(
-        n_components=config.n_components, n_demos=5)
-    gmm.fit(data)
-    return gmm.n_components, gmm.bic(data)
+def objective(x_gmr, x_kmp, mu, sigma, config):
+    kmp = KMP(l=config.l, alpha=config.alpha, sigma_f=config.sigma_f)
+    kmp.fit(x_gmr, mu, sigma)
+    kmp.predict(x_kmp)
+    return kmp.l, kmp.alpha, kmp.sigma_f, kmp.kl_divergence
 
-def main(data):
+def main(x_gmr, x_kmp, mu, sigma):
     def agent():
         wandb.init(project="CoLeCT-GMM")
-        n_comp, bic = objective(data, wandb.config)
-        wandb.log({"n_components": n_comp, "bic": bic})
+        l, alpha, sigma_f, kl_div = objective(x_gmr, x_kmp, mu, sigma, wandb.config)
+        wandb.log({"l": l, "alpha": alpha, "sigma_f": sigma_f, "kl_div": kl_div})
     return agent
 
 # 2: Define the search spaces
@@ -68,22 +72,17 @@ sweep_configuration = {
     "name": "",
     "method": "grid",
     "parameters": {
-        "n_components": {"values": [i for i in range(1,21)]}
+        "l": {"values": [0.01, 0.1, 1, 10]},
+        "alpha": {"values": [0.5, 1, 10, 50]},
+        "sigma_f": {"values": [0.01, 0.1, 1, 10]},
     },
 }
 
 # 3: Start the sweeps
 sweep_configuration['name'] = 'position'
-sweep_id = wandb.sweep(sweep=sweep_configuration, project="CoLeCT-GMM")
+sweep_id = wandb.sweep(sweep=sweep_configuration, project="CoLeCT-KMP")
 
-wandb.agent(sweep_id, function=main(X_pos.T))
+wandb.agent(sweep_id, function=main(x_gmr, x_kmp, mu_pos, sigma_pos))
 
 sweep_configuration['name'] = 'orientation'
-sweep_id = wandb.sweep(sweep=sweep_configuration, project="CoLeCT-GMM")
-
-wandb.agent(sweep_id, function=main(X_rot.T))
-
-sweep_configuration['name'] = 'force'
-sweep_id = wandb.sweep(sweep=sweep_configuration, project="CoLeCT-GMM")
-
-wandb.agent(sweep_id, function=main(X_force.T))
+sweep_id = wandb.sweep(sweep=sweep_configuration, project="CoLeCT-KMP")
