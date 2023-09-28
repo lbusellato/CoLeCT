@@ -1,11 +1,9 @@
-import copy
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
 
-from os.path import dirname, abspath, join
+from os.path import dirname, abspath
 from src.dataset import load_datasets
-from src.datatypes import Quaternion
 from src.mixture import GaussianMixtureModel
 from src.kmp import KMP
 
@@ -50,17 +48,17 @@ def main():
     x_kmp = np.arange(kmp_dt, demo_duration, kmp_dt).reshape(1, -1)
     
     # GMM/GMR on the position
-    gmm = GaussianMixtureModel(n_components=10, n_demos=H)
+    gmm = GaussianMixtureModel(n_components=5, n_demos=H)
     gmm.fit(X_pos)
     mu_pos, sigma_pos = gmm.predict(x_gmr)
     
     # GMM/GMR on the orientation
-    gmm = GaussianMixtureModel(n_components=10, n_demos=H)
+    gmm = GaussianMixtureModel(n_components=3, n_demos=H)
     gmm.fit(X_rot)
     mu_rot, sigma_rot = gmm.predict(x_gmr)
         
     # GMM/GMR on the force
-    gmm = GaussianMixtureModel(n_components=10, n_demos=H)
+    gmm = GaussianMixtureModel(n_components=5, n_demos=H)
     gmm.fit(X_force)
     mu_force, sigma_force = gmm.predict(x_gmr)
         
