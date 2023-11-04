@@ -15,7 +15,9 @@ REALMIN = np.finfo(np.float64).tiny  # To avoid division by 0
 
 
 class GaussianMixtureModel():
-    """Representation of a Gaussian Mixture Model probability distribution. The class allows for the estimation of the parameters of a GMM, specifically in the case of learning from demonstration. The class is based on sklearn's GMM implementation.
+    """Representation of a Gaussian Mixture Model probability distribution. The class allows for the estimation of the 
+    parameters of a GMM, specifically in the case of learning from demonstration. The class is based on sklearn's GMM 
+    implementation, expanding it to implement Gaussian Mixture Regression.
 
     Parameters
     ----------
@@ -48,9 +50,10 @@ class GaussianMixtureModel():
         """
         self.n_features = data.shape[1]
         self.model.fit(data)
+        self.logger.info("GMM fit done.")
         self.priors = self.model.weights_
-        self.means = self.model.means_
-        self.covariances = self.model.covariances_
+        self.means = self.model.means_.T # transpose to have shape (n_features, n_samples)
+        self.covariances = np.transpose(self.model.covariances_, (1, 2, 0)) # transpose to have shape (n_features, n_features, n_samples)
 
     def gaussPDF(self, data: np.array, mean: np.array, cov: np.array) -> np.array:
         """Compute the Gaussian Probability Density Function for the Gaussian distribution with 
@@ -107,21 +110,21 @@ class GaussianMixtureModel():
         for t in range(N):
             # Activation weight
             for i in range(self.n_components):
-                mu = self.means[i, :I]
-                sigma = self.covariances[i, :I, :I]
+                mu = self.means[:I, i]
+                sigma = self.covariances[:I, :I, i]
                 H[i, t] = self.priors[i] * self.gaussPDF(data[:, t], mu, sigma)
             H[:, t] /= np.sum(H[:, t] + REALMIN)
             # Conditional means
             for i in range(self.n_components):
-                sigma_tmp = self.covariances[i, I:, :I]@inv(self.covariances[i, :I, :I])
-                mu_tmp[:, i] = self.means[i, I:] + \
-                    sigma_tmp@(data[:, t]-self.means[i, :I])
+                sigma_tmp = self.covariances[I:, :I, i]@inv(self.covariances[:I, :I, i])
+                mu_tmp[:, i] = self.means[I:, i] + \
+                    sigma_tmp@(data[:, t]-self.means[:I, i])
                 means[:, t] += H[i, t]*mu_tmp[:, i]
             # Conditional covariances
             for i in range(self.n_components):
-                sigma_tmp = self.covariances[i, I:, I:] - \
-                    self.covariances[i, I:, :I]@inv(
-                        self.covariances[i, :I, :I])@self.covariances[i, :I, I:]
+                sigma_tmp = self.covariances[I:, I:, i] - \
+                    self.covariances[I:, :I, i]@inv(
+                        self.covariances[:I, :I, i])@self.covariances[:I, I:, i]
                 covariances[:, :, t] += H[i, t] * \
                     (sigma_tmp + np.outer(mu_tmp[:, i], mu_tmp[:, i]))
             covariances[:, :, t] += diag_reg_factor - \
