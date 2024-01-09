@@ -5,7 +5,7 @@ import time
 
 from control import lqr
 from os.path import join, dirname, abspath, exists
-from src.hex12 import HEX12
+from colect.hex12 import HEX12
 
 ROOT = dirname(dirname(abspath(__file__)))
 

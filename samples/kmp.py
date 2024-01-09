@@ -3,9 +3,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from os.path import dirname, abspath
-from src.dataset import load_datasets
-from src.mixture import GaussianMixtureModel
-from src.kmp import KMP
+from colect.dataset import load_datasets
+from colect.mixture import GaussianMixtureModel
+from colect.kmp import KMP
 
 # Set up logging
 logging.basicConfig(
