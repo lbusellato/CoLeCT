@@ -1,6 +1,7 @@
 import csv
 import logging
 import numpy as np
+import ntplib
 import time
 
 from os.path import abspath, dirname, join
@@ -30,7 +31,10 @@ class Recorder():
         recording_filename = time.strftime("%Y%m%d-%H%M%S") + '.csv'
         self.recording_file = join(recording_path, recording_filename)
         self.recording = False
-        self.start_time = time.time()
+        # Timestamp stuff
+        self.time = None
+        self.time = self.get_timestamp()
+        self.prev_time = self.time
 
     def run(self) -> int:
         help = 'Command list:\n\tr - Start recording\n\ts - Stop recording\n\tq - Quit\n'
@@ -78,7 +82,7 @@ class Recorder():
             The list of force/torque values.
         """
         if self.recording:
-            self.reading[0] = round(time.time() - self.start_time, 6)
+            self.reading[0] = self.get_timestamp()
             self.reading[8:] = wrench
             with open(self.recording_file, 'a') as f:
                 writer = csv.writer(f)
@@ -95,3 +99,27 @@ class Recorder():
         """
         if self.recording:
             self.reading[1:8] = rigid_body.pos + rigid_body.rot
+
+    def get_timestamp(self) -> float:
+        """Generate a timestamp. Query the NTP server to get the current time, then add the increment
+        since last time this function was called.
+
+        Returns
+        -------
+        float
+            The current timestamp.
+        """
+        if self.time is None:
+
+            NTP_SERVER = 'uk.pool.ntp.org'
+
+            client = ntplib.NTPClient()
+            response = client.request(NTP_SERVER, version=3)
+            return response.tx_time
+
+        curr_time = time.time()
+        increment = curr_time - self.prev_time
+        self.prev_time = curr_time
+        self.time += increment
+
+        return self.time
