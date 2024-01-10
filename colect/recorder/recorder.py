@@ -111,7 +111,7 @@ class Recorder():
         """
         if self.time is None:
 
-            NTP_SERVER = 'uk.pool.ntp.org'
+            NTP_SERVER = 'dk.pool.ntp.org'
 
             client = ntplib.NTPClient()
             response = client.request(NTP_SERVER, version=3)
