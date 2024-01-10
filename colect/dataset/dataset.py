@@ -29,7 +29,7 @@ def create_dataset(demonstrations_path: str = '') -> None:
             reader = csv.DictReader(csv_file)
             for j, row in enumerate(reader):
                 if j % 2 == 0:
-                    t = t_cnt*t_dt  # float(row['timestamp'])
+                    t = float(row['timestamp'])# t_cnt*t_dt
                     t_cnt += 1
                     x = float(row['pos_x'])
                     y = float(row['pos_y'])
@@ -109,7 +109,7 @@ def interpolate_datasets(datasets_path: str = ''):
         for i in range(3):
             interp_dataset[missing_indices, i + 1] = np.interp(time_missing, time_known, position_known[:, i])
         # Interpolate the orientation (quaternion) using SLERP
-        interp_dataset[missing_indices, 4:8] = slerp(time_missing, time_known, orientation_known)
+        interp_dataset[missing_indices, 4:8] = slerp(time_missing, time_known, orientation_known)[:missing_indices.shape[0],:]
         if qa is None:
             qa = Quaternion.from_array(orientation_known[0])
         for i in missing_indices:
