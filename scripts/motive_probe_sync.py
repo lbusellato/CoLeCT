@@ -48,6 +48,7 @@ def main():
     datasets = load_datasets(path)
     dataset_timestamp = np.array([p.timestamp for p in datasets[0]])
     z_force = [p.fz for p in datasets[0]]
+    z_coord = [p.z for p in datasets[0]]
     time = [0.001*i for i in range(len(datasets[0]))]
 
     # Get each image's timestamp
@@ -69,12 +70,11 @@ def main():
     plt.title('Z-force vs us image')
 
     ax = plt.gca()
-
-    # Define a 1st position to annotate (display it with a marker)
-    xy = (0.5, 0.7)
-
+    ax2 = ax.twinx()
+    ax2.set_ylabel("Position z [m]")
+    plt.plot(time, z_coord,color="red")
     # Enable hover functionality
-    cursor = mplcursors.cursor(hover=True)
+    cursor = mplcursors.cursor(pickables=[ax],hover=True)
 
     global last
     last = None
@@ -111,6 +111,7 @@ def main():
 
         ax.add_artist(last)
     plt.grid()
+    plt.legend()
     plt.show()
 
 if __name__ == '__main__':
