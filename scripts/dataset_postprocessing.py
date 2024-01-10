@@ -41,17 +41,15 @@ def main():
     # Showcase the dataset postprocessing operations
     # Process the .csv files into .npy files
     path = 'demonstrations/vascular_phantom'
-    from_scratch = False
-    if from_scratch:
-        create_dataset(path)
-        # Trim any leading or trailing force-only samples
-        trim_datasets(path)
-        # Fill in the force-only samples by linearly interpolating the poses
-        interpolate_datasets(path)
-        # Align temporally the datasets with Soft-DTW
-        align_datasets(path)
-        # Transform the coordinates to the base robot frame
-        to_base_frame(path, 'demonstrations')
+    create_dataset(path)
+    # Trim any leading or trailing force-only samples
+    trim_datasets(path)
+    # Fill in the force-only samples by linearly interpolating the poses
+    interpolate_datasets(path)
+    # Align temporally the datasets with Soft-DTW
+    align_datasets(path)
+    # Transform the coordinates to the base robot frame
+    to_base_frame(path, 'demonstrations')
     # Load the processed datasets
     processed = load_datasets(path)
     # Plot everything
