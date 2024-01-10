@@ -58,7 +58,7 @@ The demonstration recording part of the framework was built around a custom-made
 
 The tool has six OptiTrack markers used for recording the position and orientation, and a Wittenstein HEX12 6DOF force/torque sensor mounted on the end-effector.
 
-Demonstration recording is handled by the Recorder class. A sample usage can be found in [samples/demonstration_recording.py](https://github.com/lbusellato/colect/blob/main/requirements.txt). 
+Demonstration recording is handled by the Recorder class. A sample usage can be found in [scripts/demonstration_recording.py](https://github.com/lbusellato/colect/blob/main/requirements.txt). 
 
 The pipeline for demonstration recording is as follows:
 
@@ -86,7 +86,7 @@ Where *pos_N* are the three cartesian coordinates, *quat_N* are the four compone
   
 ## Dataset postprocessing
 
-All the following steps are showcased in the [samples/dataset_postprocessing.py](samples/dataset_postprocessing.py) script.
+All the following steps are showcased in the [scripts/dataset_postprocessing.py](scripts/dataset_postprocessing.py) script.
 
 ### Dataset creation
 
@@ -124,7 +124,7 @@ To allow reproduction, the dataset must be converted to the relevant reference f
 
 ## Learning from demonstration
 
-All the following steps are showcased in the [samples/kmp.py](samples/kmp.py) script.
+All the following steps are showcased in the [scripts/kmp.py](scripts/kmp.py) script.
 
 ### GMM/GMR
 
