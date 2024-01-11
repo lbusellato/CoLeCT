@@ -98,7 +98,8 @@ class HEX12():
         self.stop()
 
     def autodiscover(self) -> str:
-        """Attempt discovering the COM port the sensor is attached to. This works by checking each COM port and seeing if the connected device's serial number matches the one of the sensor.
+        """Attempt discovering the COM port the sensor is attached to. This works by checking each 
+        COM port and seeing if the connected device's serial number matches the one of the sensor.
 
         Returns
         -------
@@ -115,7 +116,7 @@ class HEX12():
             if 'SER=' + self.serial_number in hwid:
                 self._logger.debug(f'Found sensor connected to {port}')
                 return port
-        raise RuntimeError(f'Port autodiscovery failed.')
+        raise RuntimeError(f'F/T sensor COM port autodiscovery failed.')
 
     @property
     def com_port(self) -> str:

@@ -47,9 +47,10 @@ def main():
     # Load the processed datasets
     datasets = load_datasets(path)
     dataset_timestamp = np.array([p.timestamp for p in datasets[0]])
+    dt = (dataset_timestamp[-1] - dataset_timestamp[0])/dataset_timestamp.shape[0]
     z_force = [p.fz for p in datasets[0]]
     z_coord = [p.z for p in datasets[0]]
-    time = [0.001*i for i in range(len(datasets[0]))]
+    time = [dt*i for i in range(len(datasets[0]))]
 
     # Get each image's timestamp
     img_timestamp = []
@@ -58,9 +59,17 @@ def main():
     images.sort()
     for img_name in images:
         img = PIL.Image.open(join(ROOT, path, img_name))
-        exif_data = img._getexif()
-        img_timestamp.append(float(exif_data[37510]))
+        img_timestamp.append(float(os.path.basename(img.filename[:-4])))
     img_timestamp = np.array(img_timestamp)
+
+    # Compute which images are valid
+    indexes = []
+    for t in dataset_timestamp:
+        absolute_diff = np.abs(img_timestamp - t)
+        indexes.append(np.argmin(absolute_diff))
+        res = list(set(indexes))
+    res = img_timestamp[res]
+
     # Plot the sine wave
     plt.plot(time, z_force)
 
@@ -96,7 +105,7 @@ def main():
         absolute_diff = np.abs(img_timestamp - point_timestamp)
         img_index = np.argmin(absolute_diff)
 
-        arr_img = plt.imread(f"./us_probe_recordings/recording_top_vase/{img_index:05d}.png")
+        arr_img = plt.imread(f"./us_probe_recordings/recording_top_vase/{img_timestamp[img_index]}.png")
 
         imagebox = OffsetImage(arr_img, zoom=0.3)
         imagebox.image.axes = ax
