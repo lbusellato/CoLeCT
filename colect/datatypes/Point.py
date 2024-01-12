@@ -10,6 +10,7 @@ class Point():
     database.
     """
     timestamp: float = 0.0
+    time: float = 0.0
     x: float = 0.0
     y: float = 0.0
     z: float = 0.0
@@ -73,7 +74,7 @@ class Point():
         return np.concatenate((self.force, self.torque))
 
     def as_array(self):
-        return np.array([self.timestamp, self.x, self.y, self.z, self.rot.as_array()[0], self.rot.as_array()[1], self.rot.as_array()[2], self.rot.as_array()[3], self.rot_eucl[0], self.rot_eucl[1], self.rot_eucl[2], self.fx, self.fy, self.fz, self.mx, self.my, self.mz])
+        return np.array([self.timestamp, self.time, self.x, self.y, self.z, self.rot.as_array()[0], self.rot.as_array()[1], self.rot.as_array()[2], self.rot.as_array()[3], self.rot_eucl[0], self.rot_eucl[1], self.rot_eucl[2], self.fx, self.fy, self.fz, self.mx, self.my, self.mz])
     
     @classmethod
     def from_array(cls, array):
@@ -81,11 +82,12 @@ class Point():
                    array[1],
                    array[2],
                    array[3],
-                   Quaternion.from_array(array[4:8]),
-                   array[8:11],
-                   array[11],
+                   array[4],
+                   Quaternion.from_array(array[5:9]),
+                   array[9:12],
                    array[12],
                    array[13],
                    array[14],
                    array[15],
-                   array[16])
+                   array[16],
+                   array[17])

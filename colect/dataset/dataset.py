@@ -9,13 +9,15 @@ from tslearn.metrics import soft_dtw_alignment
 
 ROOT = dirname(dirname(dirname(abspath(__file__))))
 
-def create_dataset(demonstrations_path: str = '') -> None:
+def create_dataset(demonstrations_path: str = '', subsample: int = 2) -> None:
     """Process a set of demonstration recordings into an usable dataset
 
     Parameters
     ----------
     demonstrations_path : str, default = ''
         The path of the directory containing the demonstrations, relative to ROOT.
+    subsample : int, default = 2
+        Subsampling to apply to the raw data. One every subsample-th data point will be preserved.
     """
     demonstrations_path = join(ROOT, demonstrations_path)
     files = [f for f in listdir(demonstrations_path) if f.endswith('.csv')]
@@ -24,13 +26,27 @@ def create_dataset(demonstrations_path: str = '') -> None:
     out = []
     for i, file in enumerate(files):
         t_cnt = 1
-        t_dt = 0.1
         with open(join(demonstrations_path, file)) as csv_file:
             reader = csv.DictReader(csv_file)
+            # Compute dt
+            line_count = sum(1 for _ in reader)
+            csv_file.seek(0)
+            next(reader)
+            first_row = next(reader)
+            first_timestamp = float(first_row['timestamp'])
+            last_row = None
+            for last_row in reader:
+                if float(last_row['timestamp']) != 0.0:
+                    last_timestamp = float(last_row['timestamp'])
+            t_dt = (last_timestamp - first_timestamp) / line_count
+            csv_file.seek(0)
+            next(reader)
+
             for j, row in enumerate(reader):
-                if j % 2 == 0:
-                    t = float(row['timestamp'])# t_cnt*t_dt
-                    t_cnt += 1
+                time = t_cnt*t_dt
+                t_cnt += 1
+                if j % subsample == 0:
+                    timestamp = float(row['timestamp'])
                     x = float(row['pos_x'])
                     y = float(row['pos_y'])
                     z = float(row['pos_z'])
@@ -50,7 +66,7 @@ def create_dataset(demonstrations_path: str = '') -> None:
                     quat = Quaternion.from_array([w, wx, wy, wz])
                     # Project to euclidean space
                     quat_eucl = (quat*~qa).log()
-                    out.append(Point(t, x, y, z, quat, quat_eucl, fx, fy, fz, mx, my, mz))
+                    out.append(Point(timestamp, time, x, y, z, quat, quat_eucl, fx, fy, fz, mx, my, mz))
             np.save(join(ROOT, demonstrations_path, f'dataset{i:02d}.npy'), out)
             out = []
 
@@ -96,26 +112,26 @@ def interpolate_datasets(datasets_path: str = ''):
         dataset = np.load(join(datasets_path, file), allow_pickle=True)
         interp_dataset = as_array(dataset)
         # Find the indices of the known points (non-zero rows)
-        known_indices = np.nonzero(np.any(interp_dataset[:, 1:7] != 0, axis=1))[0]
+        known_indices = np.nonzero(np.any(interp_dataset[:, 2:8] != 0, axis=1))[0]
         # Find the indices of the missing points (zero rows)
-        missing_indices = np.nonzero(np.all(interp_dataset[:, 1:7] == 0, axis=1))[0]
+        missing_indices = np.nonzero(np.all(interp_dataset[:, 2:8] == 0, axis=1))[0]
         # Get the time, position, and orientation of the known points
         time_known = interp_dataset[known_indices, 0]
-        position_known = interp_dataset[known_indices, 1:4]
-        orientation_known = interp_dataset[known_indices, 4:8]
+        position_known = interp_dataset[known_indices, 2:5]
+        orientation_known = interp_dataset[known_indices, 5:9]
         # Interpolate the missing points
         time_missing = interp_dataset[missing_indices, 0]
         # Interpolate the position
         for i in range(3):
-            interp_dataset[missing_indices, i + 1] = np.interp(time_missing, time_known, position_known[:, i])
+            interp_dataset[missing_indices, i + 2] = np.interp(time_missing, time_known, position_known[:, i])
         # Interpolate the orientation (quaternion) using SLERP
-        interp_dataset[missing_indices, 4:8] = slerp(time_missing, time_known, orientation_known)[:missing_indices.shape[0],:]
+        interp_dataset[missing_indices, 5:9] = slerp(time_missing, time_known, orientation_known)[:missing_indices.shape[0],:]
         if qa is None:
             qa = Quaternion.from_array(orientation_known[0])
         for i in missing_indices:
-            t, x, y, z, w, qx, qy, qz, _, _, _, fx, fy, fz, mx, my, mz = interp_dataset[i]
+            timestamp, time, x, y, z, w, qx, qy, qz, _, _, _, fx, fy, fz, mx, my, mz = interp_dataset[i]
             quat_eucl = (Quaternion.from_array([w, qx, qy, qz])*~qa).log()
-            dataset[i] = Point(t, x, y, z, 
+            dataset[i] = Point(timestamp, time, x, y, z, 
                                Quaternion.from_array([w, qx, qy, qz]), quat_eucl, 
                                fx, fy, fz, mx, my, mz)
         np.save(join(ROOT, datasets_path, file), dataset)
@@ -168,32 +184,10 @@ def slerp(time_missing : np.ndarray, time_known : np.ndarray, orientation_known 
     out = np.vstack(out)
     return out
 
-def to_base_frame(datasets_path: str = '', base_frame_recording_path : str = '') -> None:
+def to_base_frame(datasets) -> None:
     """Transform the coordinates to the base frame of the robot
-
-    Parameters
-    ----------
-    datasets_path : str, default = ''
-        The path to the datasets, relative to ROOT.
-    base_frame_recording_path : str, default = ''
-        The path to the recording of the robot base frame, relative to ROOT.
     """
-    # Recover the position of the base frame of the robot
-    files = [f for f in listdir(base_frame_recording_path) if isfile(join(base_frame_recording_path,f))]
-    base_file = files[0]
-    UR5_base_position = np.zeros(3)
-    """with open(join(base_frame_recording_path, base_file)) as csv_file:
-        reader = csv.DictReader(csv_file)
-        for row in reader:
-            if float(row['pos_x']) != 0:
-                UR5_base_position[0] = float(row['pos_x'])
-                UR5_base_position[1] = float(row['pos_y'])
-                UR5_base_position[2] = float(row['pos_z'])        
-                break""" # Broken
-    # Recover the recordings
-    datasets_path = join(ROOT, datasets_path)
-    files = [f for f in listdir(datasets_path) if f.endswith('.npy')]
-    files.sort()
+    
     # Rotation of the robot base frame wrt Motive frame
     theta = -np.pi
     R = np.array([[1, 0, 0],
@@ -201,25 +195,27 @@ def to_base_frame(datasets_path: str = '', base_frame_recording_path : str = '')
                   [0, np.sin(theta), np.cos(theta)]])
     # For Euclidean projection
     qa = None
-    for file in files:
-        dataset = np.load(join(datasets_path, file), allow_pickle=True)
+    out = []
+    UR5_base_position = np.zeros(3)
+    for dataset in datasets:
         new = as_array(dataset)
         # Translation
-        new[:, 1:4] -= UR5_base_position
+        new[:, 2:5] -= UR5_base_position
         # Rotation
-        new[:, [2, 3]] = new[:, [3, 2]]
-        new[:, 2] *= -1
+        new[:, [3, 4]] = new[:, [4, 3]]
+        new[:, 3] *= -1
         # Quaternions
         for i in range(new.shape[0]):
-            old_quat = Quaternion.from_array(new[i, 4:8])
+            old_quat = Quaternion.from_array(new[i, 5:9])
             old_quat_R = old_quat.as_rotation_matrix()
             new_quat_R = R@old_quat_R.T
             new_quat = Quaternion.from_rotation_matrix(new_quat_R)
             if qa is None:
                 qa = new_quat
-            new[i, 4:8] = new_quat.as_array()
-            new[i, 8:11] = (new_quat*~qa).log()
-        np.save(join(ROOT, datasets_path, file), from_array(new))
+            new[i, 5:9] = new_quat.as_array()
+            new[i, 9:12] = (new_quat*~qa).log()
+        out.append(from_array(new))
+    return out
 
 def compute_alignment_path(cost_matrix):
     """Computes the warping path from a cost matrix.
@@ -245,23 +241,21 @@ def align_datasets(datasets_path: str = ''):
     files.sort()
     datasets = [np.load(join(datasets_path, file), allow_pickle=True) for file in files]
     np.save(join(ROOT, datasets_path, f'dataset00.npy'), datasets[0])
-    reference = as_array(datasets[0])[:, 1:8]
+    reference = as_array(datasets[0])[:, 2:9]
     for i, dataset in enumerate(datasets):
         if i > 0:
-            cost_matrix, _ = soft_dtw_alignment(as_array(dataset)[:, 1:8], reference, gamma=2.5)
+            cost_matrix, _ = soft_dtw_alignment(as_array(dataset)[:, 2:9], reference, gamma=2.5)
             for j, point in enumerate(dataset):
                 point.timestamp = (j + 1) * 0.1
             np.save(join(ROOT, datasets_path, f'dataset{i:02d}.npy'), dataset[compute_alignment_path(cost_matrix)])
 
-def load_datasets(datasets_path: str='', regex = r'dataset(\d{2})\.npy') -> np.ndarray:
+def load_datasets(datasets_path: str='') -> np.ndarray:
     """Load all datasets in the given folder.
 
     Parameters
     ----------
     datasets_path : str, default = ''
         The path to the datasets, relative to ROOT.
-    regex : str, default = r'dataset(\d{2})\.npy'
-        Regex used to locate the relevant files in the path.
 
     Returns
     -------
@@ -273,3 +267,35 @@ def load_datasets(datasets_path: str='', regex = r'dataset(\d{2})\.npy') -> np.n
     datasets = [f for f in listdir(datasets_path) if f.endswith('.npy')]
     datasets.sort()
     return [np.load(join(datasets_path, f), allow_pickle=True) for f in datasets]
+
+def clip_datasets(datasets_path: str='', lower_cutoff: float=0.0, upper_cutoff: float=0.0) -> np.ndarray:
+    datasets_path = join(ROOT, datasets_path)
+    files = [f for f in listdir(datasets_path) if f.endswith('.npy')]
+    files.sort()
+    datasets = [np.load(join(datasets_path, f), allow_pickle=True) for f in files]
+    if lower_cutoff != upper_cutoff and lower_cutoff < upper_cutoff:
+        out = []
+        for file in datasets:
+            out.append([p for p in file if p.time >= lower_cutoff and p.time <= upper_cutoff])
+        return out
+    return datasets
+
+def check_quat_signs(datasets) -> np.ndarray:
+
+    reference = datasets[0]
+    reference = reference[0]
+    # Get the signs from the reference demonstration
+    signs = [np.sign(reference.rot[0]), np.sign(reference.rot[1]), np.sign(reference.rot[2]), np.sign(reference.rot[3])]
+
+    # Loop over the rest of the demonstrations and adjust the signs
+    for dataset in datasets[1:]:
+        for p in dataset:
+            rot = p.rot
+            rot[0] *= signs[0] * np.sign(rot[0])
+            rot[1] *= signs[1] * np.sign(rot[1])
+            rot[2] *= signs[2] * np.sign(rot[2])
+            rot[3] *= signs[3] * np.sign(rot[3])
+            p.rot = rot
+
+    return datasets
+

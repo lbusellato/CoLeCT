@@ -2,20 +2,22 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from os.path import join, dirname, abspath
-from colect.dataset import create_dataset, trim_datasets, align_datasets, interpolate_datasets, load_datasets, to_base_frame
+from colect.dataset import (create_dataset, trim_datasets, align_datasets, interpolate_datasets, 
+                            load_datasets, to_base_frame, clip_datasets, check_quat_signs)
 
 ROOT = dirname(dirname(abspath(__file__)))
 
 
-def plot_demo(ax, demonstration, linewidth=1.0, color='blue'):
+def plot_demo(ax, demonstration, linewidth=1.0, color='blue', label=""):
     # Plot all the data in a demonstration
-    time = [0.001*i for i in range(len(demonstration))]
+    time = [p.time for p in demonstration]
     x = [p.x for p in demonstration]
     y = [p.y for p in demonstration]
     z = [p.z for p in demonstration]
-    qx = [p.rot.as_array()[1] for p in demonstration]
-    qy = [p.rot.as_array()[2] for p in demonstration]
-    qz = [p.rot.as_array()[3] for p in demonstration]
+    qx = [p.rot.as_array()[0] for p in demonstration]
+    qy = [p.rot.as_array()[1] for p in demonstration]
+    qz = [p.rot.as_array()[2] for p in demonstration]
+    qw = [p.rot.as_array()[3] for p in demonstration]
     fx = [p.fx for p in demonstration]
     fy = [p.fy for p in demonstration]
     fz = [p.fz for p in demonstration]
@@ -30,35 +32,58 @@ def plot_demo(ax, demonstration, linewidth=1.0, color='blue'):
     for i in range(4):
         for j in range(3):
             ax[i, j].plot(data[0], data[i*3 + j + 1],
-                          linewidth=linewidth, color=color)
+                          linewidth=linewidth, label=label)
             ax[i, j].set_ylabel(y_labels[i*3 + j])
             ax[i, j].grid(True)
             if i == 3:
                 ax[i, j].set_xlabel('Time [s]')
+    for i in range(4):
+        for j in range(4):
+            if i != 1 and j == 3:
+                ax[i, j].axis('off')
+    ax[1, 3].plot(data[0], qw, linewidth=linewidth)
+    ax[1, 3].set_ylabel('$q_w$')
+    ax[1, 3].grid(True)
+    ax[1, 3].set_xlabel('Time [s]')
 
 
 def main():
     # Showcase the dataset postprocessing operations
     # Process the .csv files into .npy files
-    path = 'demonstrations/vascular_phantom'
-    create_dataset(path)
+    path = 'demonstrations/top_vase'
+    create_dataset(path, 20)
     # Trim any leading or trailing force-only samples
     trim_datasets(path)
     # Fill in the force-only samples by linearly interpolating the poses
     interpolate_datasets(path)
     # Align temporally the datasets with Soft-DTW
-    align_datasets(path)
+    #align_datasets(path)
     # Transform the coordinates to the base robot frame
-    to_base_frame(path, 'demonstrations')
+    #to_base_frame(path, 'demonstrations')
     # Load the processed datasets
     processed = load_datasets(path)
     # Plot everything
-    fig, ax = plt.subplots(4, 3, figsize=(16, 8))
-    for dataset in processed:
-        plot_demo(ax, dataset, color='blue')
+    plt.ion()
+    fig, ax = plt.subplots(4, 4, figsize=(16, 8))
+    for i, dataset in enumerate(processed):
+        plot_demo(ax, dataset, linewidth=0.75)
     fig.suptitle('Dataset postprocessing')
     fig.tight_layout()
-    plt.show()
+    fig.legend()
+    plt.show(block=False)
+    lower_t = input("Lower time cutoff (0 for no cutoff): ")
+    upper_t = input("Upper time cutoff (0 for no cutoff): ")
+    datasets = clip_datasets(path, float(lower_t), float(upper_t))
+    datasets = check_quat_signs(datasets)
+    datasets = to_base_frame(datasets)
+    fig, ax = plt.subplots(4, 4, figsize=(16, 8))
+    for i, dataset in enumerate(datasets):
+        plot_demo(ax, dataset, linewidth=0.75)
+    fig.suptitle('Dataset postprocessing')
+    fig.tight_layout()
+    fig.legend()
+    plt.show(block=False)
+    input()
 
 
 if __name__ == '__main__':
