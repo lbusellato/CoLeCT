@@ -73,11 +73,12 @@ def main():
     plt.show(block=False)
     lower_t = input("Lower time cutoff (0 for no cutoff): ")
     upper_t = input("Upper time cutoff (0 for no cutoff): ")
-    datasets = clip_datasets(path, float(lower_t), float(upper_t))
-    datasets = check_quat_signs(datasets)
-    datasets = to_base_frame(datasets)
+    clip_datasets(path, float(lower_t), float(upper_t))
+    check_quat_signs(path)
+    processed = load_datasets(path)
+    #datasets = to_base_frame(datasets)
     fig, ax = plt.subplots(4, 4, figsize=(16, 8))
-    for i, dataset in enumerate(datasets):
+    for i, dataset in enumerate(processed):
         plot_demo(ax, dataset, linewidth=0.75)
     fig.suptitle('Dataset postprocessing')
     fig.tight_layout()

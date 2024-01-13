@@ -5,6 +5,7 @@ import os
 import PIL.Image
 
 from colect.dataset import load_datasets, as_array
+from glob import glob
 from matplotlib.offsetbox import AnnotationBbox, OffsetImage
 from os.path import dirname, abspath, join
 
@@ -41,87 +42,33 @@ def plot_demo(ax, demonstration, linewidth=1.0, color='blue'):
                 ax[i, j].set_xlabel('Time [s]')
 
 def main():
-    # Showcase the dataset postprocessing operations
-    # Process the .csv files into .npy files
-    path = 'demonstrations/vascular_phantom/'
+    path = 'demonstrations/top_vase/'
     # Load the processed datasets
     datasets = load_datasets(path)
-    dataset_timestamp = np.array([p.timestamp for p in datasets[0]])
-    dt = (dataset_timestamp[-1] - dataset_timestamp[0])/dataset_timestamp.shape[0]
-    z_force = [p.fz for p in datasets[0]]
-    z_coord = [p.z for p in datasets[0]]
-    time = [dt*i for i in range(len(datasets[0]))]
+    dataset_timestamps = np.array([[p.timestamp for p in dataset] for dataset in datasets])
 
     # Get each image's timestamp
-    img_timestamp = []
-    path = 'us_probe_recordings/recording_top_vase'
-    images = os.listdir(join(ROOT, path))
-    images.sort()
-    for img_name in images:
-        img = PIL.Image.open(join(ROOT, path, img_name))
-        img_timestamp.append(float(os.path.basename(img.filename[:-4])))
-    img_timestamp = np.array(img_timestamp)
+    path = 'us_probe_recordings/top_vase'
+    subdirs = glob(join(ROOT, path) + "/*/", recursive = True)
+    subdirs.sort()
+    
+    for i, subdir in enumerate(subdirs):
+        img_timestamp = []
+        os.makedirs(join(subdir, f"dataset{i:02d}"), exist_ok=True)
+        images = os.listdir(subdir)
+        images.sort()
 
-    # Compute which images are valid
-    indexes = []
-    for t in dataset_timestamp:
-        absolute_diff = np.abs(img_timestamp - t)
-        indexes.append(np.argmin(absolute_diff))
+        img_timestamp = np.array([float(os.path.basename(img[:-4])) for img in images if img.endswith('.png')])
+
+        # Compute which images are valid
+        indexes = []
+        for t in dataset_timestamps[i,:]:
+            absolute_diff = np.abs(img_timestamp - t)
+            indexes.append(np.argmin(absolute_diff))
         res = list(set(indexes))
-    res = img_timestamp[res]
-
-    # Plot the sine wave
-    plt.plot(time, z_force)
-
-    # Add labels and title
-    plt.xlabel('Time [s]')
-    plt.ylabel('Force z [N]')
-    plt.title('Z-force vs us image')
-
-    ax = plt.gca()
-    ax2 = ax.twinx()
-    ax2.set_ylabel("Position z [m]")
-    plt.plot(time, z_coord,color="red")
-    # Enable hover functionality
-    cursor = mplcursors.cursor(pickables=[ax],hover=True)
-
-    global last
-    last = None
-
-    # Define the hover function
-    @cursor.connect("add")
-    def on_hover(sel):
-        global last
-        if last is not None:
-            last.remove()
-
-        x_value = sel.target[0]
-        y_value = sel.target[1]
-
-        absolute_diff = np.abs(time - x_value)
-        closest_index = np.argmin(absolute_diff)
-        point_timestamp = dataset_timestamp[closest_index]
-        
-        absolute_diff = np.abs(img_timestamp - point_timestamp)
-        img_index = np.argmin(absolute_diff)
-
-        arr_img = plt.imread(f"./us_probe_recordings/recording_top_vase/{img_timestamp[img_index]}.png")
-
-        imagebox = OffsetImage(arr_img, zoom=0.3)
-        imagebox.image.axes = ax
-
-        xy = (x_value,y_value)
-        last = AnnotationBbox(imagebox, xy,
-                            xybox=(120., -50.),
-                            boxcoords="offset points",
-                            pad=0.5,
-                            arrowprops=dict(arrowstyle="->")
-                            )
-
-        ax.add_artist(last)
-    plt.grid()
-    plt.legend()
-    plt.show()
+        for r in res:
+            img = PIL.Image.open(join(subdir, images[r]))
+            img.save(join(subdir, f"dataset{i:02d}", images[r]))
 
 if __name__ == '__main__':
     main()

@@ -184,10 +184,13 @@ def slerp(time_missing : np.ndarray, time_known : np.ndarray, orientation_known 
     out = np.vstack(out)
     return out
 
-def to_base_frame(datasets) -> None:
+def to_base_frame(datasets_path: str = '') -> None:
     """Transform the coordinates to the base frame of the robot
     """
     
+    datasets_path = join(ROOT, datasets_path)
+    datasets = [f for f in listdir(datasets_path) if f.endswith('.npy')]
+    datasets.sort()
     # Rotation of the robot base frame wrt Motive frame
     theta = -np.pi
     R = np.array([[1, 0, 0],
@@ -197,7 +200,8 @@ def to_base_frame(datasets) -> None:
     qa = None
     out = []
     UR5_base_position = np.zeros(3)
-    for dataset in datasets:
+    for file in datasets:
+        dataset = np.load(join(datasets_path, file), allow_pickle=True)
         new = as_array(dataset)
         # Translation
         new[:, 2:5] -= UR5_base_position
@@ -214,7 +218,7 @@ def to_base_frame(datasets) -> None:
                 qa = new_quat
             new[i, 5:9] = new_quat.as_array()
             new[i, 9:12] = (new_quat*~qa).log()
-        out.append(from_array(new))
+        np.save(join(ROOT, datasets_path, file), new)
     return out
 
 def compute_alignment_path(cost_matrix):
@@ -268,34 +272,35 @@ def load_datasets(datasets_path: str='') -> np.ndarray:
     datasets.sort()
     return [np.load(join(datasets_path, f), allow_pickle=True) for f in datasets]
 
-def clip_datasets(datasets_path: str='', lower_cutoff: float=0.0, upper_cutoff: float=0.0) -> np.ndarray:
+def clip_datasets(datasets_path: str='', lower_cutoff: float=0.0, upper_cutoff: float=0.0):
     datasets_path = join(ROOT, datasets_path)
     files = [f for f in listdir(datasets_path) if f.endswith('.npy')]
     files.sort()
-    datasets = [np.load(join(datasets_path, f), allow_pickle=True) for f in files]
     if lower_cutoff != upper_cutoff and lower_cutoff < upper_cutoff:
-        out = []
-        for file in datasets:
-            out.append([p for p in file if p.time >= lower_cutoff and p.time <= upper_cutoff])
-        return out
-    return datasets
+        for file in files:
+            dataset = np.load(join(datasets_path, file), allow_pickle=True)
+            new = np.vstack([p for p in dataset if p.time >= lower_cutoff and p.time <= upper_cutoff]).flatten()
+            np.save(join(ROOT, datasets_path, file), new)
 
-def check_quat_signs(datasets) -> np.ndarray:
+def check_quat_signs(datasets_path: str=''):
+    datasets_path = join(ROOT, datasets_path)
+    files = [f for f in listdir(datasets_path) if f.endswith('.npy')]
+    files.sort()
 
-    reference = datasets[0]
-    reference = reference[0]
-    # Get the signs from the reference demonstration
-    signs = [np.sign(reference.rot[0]), np.sign(reference.rot[1]), np.sign(reference.rot[2]), np.sign(reference.rot[3])]
-
-    # Loop over the rest of the demonstrations and adjust the signs
-    for dataset in datasets[1:]:
-        for p in dataset:
-            rot = p.rot
-            rot[0] *= signs[0] * np.sign(rot[0])
-            rot[1] *= signs[1] * np.sign(rot[1])
-            rot[2] *= signs[2] * np.sign(rot[2])
-            rot[3] *= signs[3] * np.sign(rot[3])
-            p.rot = rot
-
-    return datasets
+    for i, file in enumerate(files):
+        dataset = np.load(join(datasets_path, file), allow_pickle=True)
+        if i == 0:
+            reference = dataset[0]
+            # Get the signs from the reference demonstration
+            signs = [np.sign(reference.rot[0]), np.sign(reference.rot[1]), np.sign(reference.rot[2]), np.sign(reference.rot[3])]
+        else:
+            # Loop over the rest of the demonstrations and adjust the signs
+            for p in dataset:
+                rot = p.rot
+                rot[0] *= signs[0] * np.sign(rot[0])
+                rot[1] *= signs[1] * np.sign(rot[1])
+                rot[2] *= signs[2] * np.sign(rot[2])
+                rot[3] *= signs[3] * np.sign(rot[3])
+                p.rot = rot
+            np.save(join(ROOT, datasets_path, file), dataset)
 
