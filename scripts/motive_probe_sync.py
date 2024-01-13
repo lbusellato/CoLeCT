@@ -42,6 +42,10 @@ def plot_demo(ax, demonstration, linewidth=1.0, color='blue'):
                 ax[i, j].set_xlabel('Time [s]')
 
 def main():
+    """This script parses all images related to the demos, saving the ones that are actually seen
+    during the demo in a subfolder.
+    """
+
     path = 'demonstrations/top_vase/'
     # Load the processed datasets
     datasets = load_datasets(path)
