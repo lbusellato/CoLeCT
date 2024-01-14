@@ -2,7 +2,7 @@ import csv
 import numpy as np
 
 from os import listdir
-from os.path import abspath, dirname, join, isfile
+from os.path import abspath, dirname, join
 from colect.datatypes import Point, Quaternion
 from tslearn.metrics import soft_dtw_alignment
 
@@ -199,7 +199,7 @@ def to_base_frame(datasets_path: str = '') -> None:
     # For Euclidean projection
     qa = None
     out = []
-    UR5_base_position = np.zeros(3)
+    UR5_base_position = np.array([1.095, 0.885, 1.5770])
     for file in datasets:
         dataset = np.load(join(datasets_path, file), allow_pickle=True)
         new = as_array(dataset)
@@ -218,6 +218,7 @@ def to_base_frame(datasets_path: str = '') -> None:
                 qa = new_quat
             new[i, 5:9] = new_quat.as_array()
             new[i, 9:12] = (new_quat*~qa).log()
+        new = from_array(new)
         np.save(join(ROOT, datasets_path, file), new)
     return out
 

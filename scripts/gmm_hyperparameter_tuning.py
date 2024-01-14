@@ -1,4 +1,5 @@
 import copy
+import matplotlib.pyplot as plt
 import numpy as np
 import wandb
 
@@ -9,15 +10,16 @@ from colect.mixture import GaussianMixtureModel
 wandb.login()
 
 ROOT = dirname(dirname(abspath(__file__)))
-subsample = 100
+subsample = 1
 
 # Load the demonstrations
-datasets = load_datasets('demonstrations/single_point_task')
+datasets = load_datasets('demonstrations/top_vase')
+datasets = datasets[:5]
 # Prepare the data for GMM/GMR
 H = len(datasets)  # Number of demonstrations
 N = len(datasets[0]) // subsample  # Length of each demonstration
 gmm_dt = 0.1
-x_gmr = gmm_dt*np.arange(1, N + 2).reshape(1, -1)
+x_gmr = gmm_dt*np.arange(1, N + 1).reshape(1, -1)
 X = np.tile(x_gmr, H).reshape(1, -1)
 # Prepare data for GMM/GMR
 Y_pos = np.vstack(
@@ -49,41 +51,31 @@ for force in forces:
 dY_force = np.hstack(forces)
 X_force = np.vstack((Y_pos, Y_rot, Y_force, dY_force))
 
-# 1: Define objective/training function
-def objective(data, config):
+# Define objective/training function for GMM
+def gmm_objective(data, config):
     gmm = GaussianMixtureModel(
         n_components=config.n_components, n_demos=5)
     gmm.fit(data)
     return gmm.n_components, gmm.bic(data)
 
-def main(data):
+def gmm_main(data):
     def agent():
         wandb.init(project="CoLeCT-GMM")
-        n_comp, bic = objective(data, wandb.config)
+        n_comp, bic = gmm_objective(data, wandb.config)
         wandb.log({"n_components": n_comp, "bic": bic})
     return agent
 
-# 2: Define the search spaces
-sweep_configuration = {
-    "name": "",
+# Define the search spaces for GMM
+gmm_sweep_configuration = {
+    "name": "force",
     "method": "grid",
     "parameters": {
         "n_components": {"values": [i for i in range(1,21)]}
     },
 }
 
-# 3: Start the sweeps
-sweep_configuration['name'] = 'position'
-sweep_id = wandb.sweep(sweep=sweep_configuration, project="CoLeCT-GMM")
+# Start the sweep for GMM
 
-wandb.agent(sweep_id, function=main(X_pos.T))
+sweep_id = wandb.sweep(sweep=gmm_sweep_configuration, project="CoLeCT-GMM")
 
-sweep_configuration['name'] = 'orientation'
-sweep_id = wandb.sweep(sweep=sweep_configuration, project="CoLeCT-GMM")
-
-wandb.agent(sweep_id, function=main(X_rot.T))
-
-sweep_configuration['name'] = 'force'
-sweep_id = wandb.sweep(sweep=sweep_configuration, project="CoLeCT-GMM")
-
-wandb.agent(sweep_id, function=main(X_force.T))
+wandb.agent(sweep_id, function=gmm_main(X_force.T))

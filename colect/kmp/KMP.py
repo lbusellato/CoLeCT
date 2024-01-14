@@ -197,8 +197,10 @@ class KMP:
         kl_divs = []
         for i in range(self.N):
             # Create a multivariate distribution from data
-            kmp_dist = multivariate_normal(xi[:, i], sigma[:, :, i])
-            ref_dist = multivariate_normal(xi_ref[:, i], sigma_ref[:, :, i])
+            s = self.symmetrize(sigma[:, :, i])
+            sr = self.symmetrize(sigma_ref[:, :, i])
+            kmp_dist = multivariate_normal(xi[:, i], s)
+            ref_dist = multivariate_normal(xi_ref[:, i], sr)
             # Evaluate the pdfs of the distributions
             kmp_pdf = kmp_dist.pdf(xi[:, i])
             ref_pdf = ref_dist.pdf(xi[:, i])
@@ -210,3 +212,6 @@ class KMP:
         kl_divs /= norm(kl_divs)
         # Compute an aggregate value
         return np.mean(kl_divs)
+    
+    def symmetrize(self, matrix):
+        return (matrix + matrix.T) / 2
