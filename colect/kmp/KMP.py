@@ -193,28 +193,60 @@ class KMP:
             )
         self._logger.info("KMP predict done.")
         #self.kl_divergence = self.KL_divergence(xi, sigma, self.xi, self.sigma)
+        self.kl_divergence = self.mean_kl_divergence(xi, sigma, self.xi, self.sigma)
 
         return xi, sigma
 
-    def KL_divergence(self, xi, sigma, xi_ref, sigma_ref) -> float:
-        kl_divs = []
-        for i in range(self.N):
-            # Create a multivariate distribution from data
-            s = self.symmetrize(sigma[:, :, i])
-            sr = self.symmetrize(sigma_ref[:, :, i])
-            kmp_dist = multivariate_normal(xi[:, i], s)
-            ref_dist = multivariate_normal(xi_ref[:, i], sr)
-            # Evaluate the pdfs of the distributions
-            kmp_pdf = kmp_dist.pdf(xi[:, i])
-            ref_pdf = ref_dist.pdf(xi[:, i])
-            # Compute the Kullback-Leibler Divergence
-            kl_div = ref_pdf * np.log(ref_pdf / kmp_pdf)
-            kl_divs.append(kl_div)
-        # Normalize, since kl divs can range wildly from tiny to huge numbers apprently
-        kl_divs = np.array(kl_divs)
-        kl_divs /= norm(kl_divs)
-        # Compute an aggregate value
-        return np.mean(kl_divs)
+    def multivariate_kl_divergence(self, mu1, cov1, mu2, cov2):
+        """
+        Calculate the KL divergence between two multivariate Gaussian distributions.
+        
+        Parameters:
+        mu1, mu2: means of the distributions
+        cov1, cov2: covariance matrices of the distributions
+        
+        Returns:
+        kl_divergence: KL divergence value
+        """
+        # Ensure the covariance matrices are symmetric
+        cov1 = 0.5 * (cov1 + cov1.T)
+        cov2 = 0.5 * (cov2 + cov2.T)
+        
+        # Calculate determinants and inverse matrices
+        det_cov1 = max(np.linalg.det(cov1), 1e-16)
+        det_cov2 = max(np.linalg.det(cov2), 1e-16)
+        inv_cov2 = inv(cov2)
+
+        # Calculate the trace term
+        trace_term = np.trace(inv_cov2 @ cov1)
+
+        # Calculate the difference in means
+        mean_diff = mu2 - mu1
+
+        # Calculate the KL divergence
+        kl_divergence = 0.5 * (np.log(det_cov2 / det_cov1) - mu1.size + trace_term + mean_diff.T @ inv_cov2 @ mean_diff)
+
+        return kl_divergence
     
-    def symmetrize(self, matrix):
-        return (matrix + matrix.T) / 2
+    def mean_kl_divergence(self, trajectory1_means, trajectory1_covariances, trajectory2_means, trajectory2_covariances):
+        """
+            Calculate the mean KL divergence between corresponding points of two trajectories.
+
+            Parameters:
+            trajectory1_means, trajectory1_covariances: means and covariance matrices of the first trajectory
+            trajectory2_means, trajectory2_covariances: means and covariance matrices of the second trajectory
+            
+            Returns:
+            mean_kl_divergence: mean KL divergence value
+        """
+        num_points = trajectory1_means.shape[1]
+        kl_divergences = np.zeros(num_points)
+
+        for i in range(num_points):
+            kl_divergences[i] = self.multivariate_kl_divergence(
+                trajectory1_means[:,i], trajectory1_covariances[:,:,i],
+                trajectory2_means[:,i], trajectory2_covariances[:,:,i]
+            )
+
+        mean_kl_divergence = np.mean(kl_divergences)
+        return mean_kl_divergence

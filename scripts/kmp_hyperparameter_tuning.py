@@ -11,7 +11,7 @@ from colect.kmp import KMP
 wandb.login()
 
 ROOT = dirname(dirname(abspath(__file__)))
-subsample = 3
+subsample = 10
 
 # Load the demonstrations
 datasets = load_datasets('demonstrations/top_vase')
@@ -63,9 +63,9 @@ kmp_sweep_configuration = {
     "name": "force",
     "method": "grid",
     "parameters": {
-        "l": {"values": [0.01, 0.1, 1, 10]},
-        "alpha": {"values": [0.5, 1, 10, 50]},
-        "sigma_f": {"values": [0.01, 0.1, 1, 10]},
+        "l": {"values": [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.1, 1, 10, 1e2, 1e3, 1e4, 1e5, 1e6]},
+        "alpha": {"values": [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.1, 1, 10, 1e2, 1e3, 1e4, 1e5, 1e6]},
+        "sigma_f": {"values": [1e-6, 1e-5, 1e-4, 1e-3, 1e-2, 0.1, 1, 10, 1e2, 1e3, 1e4, 1e5, 1e6]},
     },
 }
 

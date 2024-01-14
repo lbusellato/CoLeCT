@@ -64,9 +64,17 @@ def main():
     kmp = KMP(l=5e-3, alpha=2e3, sigma_f=750, verbose=True)
     kmp.fit(x_kmp, mu_force, sigma_force)
 
-    np.save(join(ROOT, "trained_models", "top_vase_kmp.py"), kmp)
+    #np.save(join(ROOT, "trained_models", "top_vase_kmp.py"), kmp)
+
+    qa = datasets[0][0].rot
+    quat = np.array([0.985, -0.168, -0.009, -0.029])
+    quat = quat / np.linalg.norm(quat)
+    start_pose = np.array([-0.337, 0.285, -0.358,quat[0],quat[1],quat[2],quat[3]])
+    end_pose = np.array([-0.337, 0.185, -0.358,quat[0],quat[1],quat[2],quat[3]])
+    x_kmp2 = linear_traj(start_pose, end_pose, n_points=N, qa=qa).T
 
     mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp)
+    print(kmp.kl_divergence)
     
     test = x_kmp[:, 0]
     start_time = time.time()
