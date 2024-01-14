@@ -1,6 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 
+from colect.datatypes import Quaternion
 from scipy.spatial.transform import Rotation, Slerp
 
 def linear_traj_w_gauss_noise(start: np.ndarray, end: np.ndarray, n_points: int = 100, mean: float = 0.05, var: float = 0.05):
@@ -45,7 +46,7 @@ def linear_traj_w_gauss_noise(start: np.ndarray, end: np.ndarray, n_points: int 
 
     return traj
 
-def linear_traj(start: np.ndarray, end: np.ndarray, n_points: int = 100):
+def linear_traj(start: np.ndarray, end: np.ndarray, n_points: int = 100, qa = None):
     """
     Generate a linear trajectory between two poses.
 
@@ -53,6 +54,7 @@ def linear_traj(start: np.ndarray, end: np.ndarray, n_points: int = 100):
     - start: Starting pose as a numpy array [position, quaternion].
     - end: Ending pose as a numpy array [position, quaternion].
     - n_points: Number of points in the trajectory, including start and end (default is 100).
+    - qa: Auxiliary quaternion to use for projecting quaternions to Euclidean space
 
     Returns:
     - traj: List of poses along the trajectory, each pose represented as [position, quaternion].
@@ -71,6 +73,14 @@ def linear_traj(start: np.ndarray, end: np.ndarray, n_points: int = 100):
     slerp = Slerp(key_times, key_rots)
     rotations = slerp(np.arange(n_points)/n_points)
     rotations = Rotation.as_quat(rotations)
+
+    if qa is not None:
+        quats = []
+        for quat in rotations:
+            qx, qy, qz, w = quat
+            quats.append((Quaternion.from_array([w, qx, qy, qz])*~qa).log())
+        rotations = np.array(quats)
+
 
     # Combine positions and orientations to form the trajectory
     traj = np.column_stack((positions, rotations))

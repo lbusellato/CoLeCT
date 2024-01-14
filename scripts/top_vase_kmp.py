@@ -1,12 +1,15 @@
+import copy
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
+import time
 
 from matplotlib.patches import Ellipse
-from os.path import dirname, abspath
+from os.path import dirname, abspath, join
 from colect.dataset import load_datasets, as_array
 from colect.mixture import GaussianMixtureModel
 from colect.kmp import KMP
+from colect.utils import linear_traj
 
 # Set up logging
 logging.basicConfig(
@@ -18,7 +21,7 @@ logging.basicConfig(
 ROOT = dirname(dirname(abspath(__file__)))
 
 # One every 'subsample' data points will be kept for each demonstration
-subsample = 3
+subsample = 10
 
 
 def main():
@@ -33,54 +36,45 @@ def main():
     H = len(datasets)  # Number of demonstrations
     N = len(datasets[0])  # Length of each demonstration
 
-    X_force = extract_input_data(datasets, "force")
 
     dt = 0.001
     demo_duration = dt * (N + 1)  # Duration of each demonstration
-    x_gmr = dt * np.arange(1, N + 2).reshape(1, -1)
 
     # Use the average pose as input for GMR prediction
-    dataset_arrs = [as_array(dataset[::subsample]) for dataset in datasets]
+    dataset_arrs = [as_array(dataset) for dataset in datasets]
     poses = np.stack((dataset_arrs))
-    x_kmp = np.mean(poses, axis=0)[:, [2,3,4,9,10,11]].T
+    x_gmr = np.mean(poses, axis=0)[:, [2,3,4,9,10,11]].T
+    
+    # Prepare data for GMM/GMR
+    X_force = extract_input_data(datasets)
+
+    qa = datasets[0][0].rot
+    quat = np.array([0.985, -0.168, -0.009, -0.029])
+    quat = quat / np.linalg.norm(quat)
+    start_pose = np.array([-0.337, 0.285, -0.358,quat[0],quat[1],quat[2],quat[3]])
+    end_pose = np.array([-0.437, 0.285, -0.358,quat[0],quat[1],quat[2],quat[3]])
+    x_kmp = linear_traj(start_pose, end_pose, n_points=N, qa=qa).T
 
     # GMM/GMR on the force
-    gmm = GaussianMixtureModel(n_components=5, n_demos=H)
+    gmm = GaussianMixtureModel(n_components=10, n_demos=H)
     gmm.fit(X_force)
-    mu_force, sigma_force = gmm.predict(x_kmp)
+    mu_force, sigma_force = gmm.predict(x_gmr)
 
     # KMP on the force
     kmp = KMP(l=5e-3, alpha=2e3, sigma_f=750, verbose=True)
     kmp.fit(x_kmp, mu_force, sigma_force)
+
+    np.save(join(ROOT, "trained_models", "top_vase_kmp.py"), kmp)
+
     mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp)
     
+    test = x_kmp[:, 0]
+    start_time = time.time()
+    m, s = kmp.predict(test)
+    elapsed = time.time() - start_time
+    print(f"Elapsed: {elapsed}")
 
-    time = [p.time for p in datasets[0]] 
-    time = dt * np.arange(1, len(time) + 1)
-
-    t_gmr = dt * (334 / 112) *np.arange(1,mu_force.shape[1] + 1)
-
-    # Plot GMR
-    fig_gmr, ax = plt.subplots(3, 3, figsize=(16, 8))
-    for dataset in datasets:
-        plot_demo(ax, dataset, demo_duration)
-        
-    for i in range(3):
-        ax[2,i].plot(t_gmr, mu_force[i, :],color="red")
-        
-    fig_gmr.suptitle("Single point task - GMR")
-    fig_gmr.tight_layout()
-    
-    # Plot KMP
-    fig_kmp, ax = plt.subplots(3, 3, figsize=(16, 8))
-    for dataset in datasets:
-        plot_demo(ax, dataset, demo_duration)
-    t_kmp = t_gmr
-    for i in range(3):
-        ax[2,i].plot(t_kmp, mu_force_kmp[i, :],color="green")
-            
-    fig_kmp.suptitle("Single point task - KMP")
-    fig_kmp.tight_layout()
+    t_gmr = dt * np.arange(1,N+1)
     
     # Plot KMP vs GMR
     fig_vs, ax = plt.subplots(3, 3, figsize=(16, 8))
@@ -88,27 +82,24 @@ def main():
         plot_demo(ax, dataset, demo_duration)
         
     for i in range(3):
+        ax[0,i].plot(t_gmr, x_kmp[i,:], color="green")
+        ax[1,i].plot(t_gmr, x_kmp[i + 3,:], color="green")
         ax[2,i].plot(t_gmr, mu_force[i, :],color="red")
-        ax[2,i].plot(t_kmp, mu_force_kmp[i, :],color="green")
+        ax[2,i].plot(t_gmr, mu_force_kmp[i, :],color="green")
         
-    handles, labels = ax[0, 0].get_legend_handles_labels()
-    fig_vs.legend(handles, labels, loc='upper left', bbox_to_anchor=(0.5, 0.95))
-
-    fig_vs.suptitle("Single point task - GMR vs KMP")
+    fig_vs.suptitle("Top vase sliding task - GMR vs KMP")
     fig_vs.tight_layout()
 
     plt.show()
 
 
-def extract_input_data(datasets: np.ndarray, field: str, dt: float = 0.1) -> np.ndarray:
+def extract_input_data(datasets: np.ndarray, dt: float = 0.1) -> np.ndarray:
     """Creates the input array for training the GMMs
 
     Parameters
     ----------
     datasets : np.ndarray
-        The demonstration dataset.
-    field : str
-        Either `"position"`, `"orientation"` or `"force"`.
+        The demonstration dataset(s).
     dt : float, default = 0.1
         Timestep for the creation of the input vector (timeseries) and for the computation of the derivatives of the output.
 
@@ -121,37 +112,22 @@ def extract_input_data(datasets: np.ndarray, field: str, dt: float = 0.1) -> np.
     # Extract the shape of each demonstration
     H = len(datasets)  # Number of demonstrations
     N = len(datasets[0])  # Length of each demonstration
-
-    # Input vector for time-based GMM
-    x_gmr = dt * np.arange(1, N + 1).reshape(1, -1)
-    X = np.tile(x_gmr, H).reshape(1, -1)
-
-    # Depending on the requested field, set up the output vectors
-    if field == "position":
-        Y = np.vstack([p.position for dataset in datasets for p in dataset]).T
-    elif field == "orientation":
-        Y = np.vstack([p.rot_eucl for dataset in datasets for p in dataset]).T
-    elif field == "force":
-        # Pose-based case
-        pos = np.vstack([p.position for dataset in datasets for p in dataset]).T
-        rot = np.vstack([p.rot_eucl for dataset in datasets for p in dataset]).T
-        X = np.vstack((pos, rot))
-        Y = np.vstack([p.force for dataset in datasets for p in dataset]).T
-
-    # Add the outputs to the dataset
-    X = np.vstack((X, Y))
+    
+    pos = np.vstack([p.position for dataset in datasets for p in dataset]).T
+    rot = np.vstack([p.rot_eucl for dataset in datasets for p in dataset]).T
+    force = np.vstack([p.force for dataset in datasets for p in dataset]).T
 
     #if field != "force":
     # Compute the derivatives of the outputs
-    Y = np.split(Y, H, axis=1)
-    for y in Y:
+    dY = np.split(copy.deepcopy(force), H, axis=1)
+    for y in dY:
         y[0, :] = np.gradient(y[0, :]) / dt
         y[1, :] = np.gradient(y[1, :]) / dt
         y[2, :] = np.gradient(y[2, :]) / dt
-    dY = np.hstack(Y)
+    dY = np.hstack(dY)
 
     # Add the derivatives to the dataset
-    X = np.vstack((X, dY))
+    X = np.vstack((pos, rot, force, dY))
 
     # The shape of the dataset should be (n_samples, n_features)
     return X.T

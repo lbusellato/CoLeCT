@@ -173,6 +173,9 @@ class KMP:
         sigma : np.ndarray of shape (n_features,n_features,n_samples)
             The array of predicted covariance matrices.
         """
+        # If a single point is queried, make sure it is in the proper shape
+        if s.shape == (s.size,):
+            s = s.reshape((s.size, 1))
         xi = np.zeros((self.O, s.shape[1]))
         sigma = np.zeros((self.O, self.O, s.shape[1]))
         for j in range(s.shape[1]):
