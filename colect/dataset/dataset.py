@@ -305,3 +305,30 @@ def check_quat_signs(datasets_path: str=''):
                 p.rot = rot
             np.save(join(ROOT, datasets_path, file), dataset)
 
+def z_to_delta_z(datasets_path: str='', z0: float = 0.05):
+    datasets_path = join(ROOT, datasets_path)
+    files = [f for f in listdir(datasets_path) if f.endswith('.npy')]
+    files.sort()
+
+    for i, file in enumerate(files):
+        dataset = np.load(join(datasets_path, file), allow_pickle=True)
+        # Loop over the rest of the demonstrations and adjust the signs
+        for p in dataset:
+            z = p.z
+            new_z = z - z0
+            p.z = new_z
+        np.save(join(ROOT, datasets_path, file), dataset)
+
+def align_y(datasets_path: str=''):
+    datasets_path = join(ROOT, datasets_path)
+    files = [f for f in listdir(datasets_path) if f.endswith('.npy')]
+    files.sort()
+
+    for i, file in enumerate(files):
+        dataset = np.load(join(datasets_path, file), allow_pickle=True)
+        y = np.array([p.y for p in dataset])
+        y_mean = np.mean(y)
+        for p in dataset:
+            p.y -= y_mean
+        np.save(join(ROOT, datasets_path, file), dataset)
+
