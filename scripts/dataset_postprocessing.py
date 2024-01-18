@@ -2,8 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 from os.path import join, dirname, abspath
-from colect.dataset import (create_dataset, trim_datasets, align_datasets, interpolate_datasets, 
-                            load_datasets, to_base_frame, clip_datasets, check_quat_signs)
+from colect.dataset import *
 
 ROOT = dirname(dirname(abspath(__file__)))
 
@@ -50,16 +49,16 @@ def plot_demo(ax, demonstration, linewidth=1.0, color='blue', label=""):
 def main():
     # Showcase the dataset postprocessing operations
     # Process the .csv files into .npy files
-    path = 'demonstrations/top_vase'
+    path = 'demonstrations/three_vases_reproduction'
     create_dataset(path, 20)
     # Trim any leading or trailing force-only samples
     trim_datasets(path)
     # Fill in the force-only samples by linearly interpolating the poses
     interpolate_datasets(path)
-    # Align temporally the datasets with Soft-DTW
-    #align_datasets(path)
     # Transform the coordinates to the base robot frame
     to_base_frame(path)
+    # Transform the z coordinate into the delta-z from the phantom's surface
+    #z_to_delta_z(path, z0=0.05)
     # Load the processed datasets
     processed = load_datasets(path)
     # Plot everything
@@ -74,9 +73,12 @@ def main():
     lower_t = input("Lower time cutoff (0 for no cutoff): ")
     upper_t = input("Upper time cutoff (0 for no cutoff): ")
     clip_datasets(path, float(lower_t), float(upper_t))
+    # Artificially remove the variation in y
+    #align_y(path)
     check_quat_signs(path)
     processed = load_datasets(path)
-    #datasets = to_base_frame(datasets)
+    fz = [p.fz for dataset in processed for p in dataset]
+    print(f"Force z mean: {np.mean(fz)}, std: {np.std(fz)}")
     fig, ax = plt.subplots(4, 4, figsize=(16, 8))
     for i, dataset in enumerate(processed):
         plot_demo(ax, dataset, linewidth=0.75)

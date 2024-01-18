@@ -72,9 +72,9 @@ kmp_sweep_configuration = {
     "name": "force",
     "method": "grid",
     "parameters": {
-        "l": {"values": np.logspace(-6, 6, 5).tolist()},
-        "alpha": {"values": np.logspace(-6, 6, 5).tolist()},
-        "sigma_f": {"values": np.logspace(-6, 6, 5).tolist()},
+        "l": {"values": [1e-5, 1e-4, 1e-3, 1e-2, 0.1, 1, 10, 1e2, 1e3, 1e4]},
+        "alpha": {"values": [1e-5, 1e-4, 1e-3, 1e-2, 0.1, 1, 10, 1e2, 1e3, 1e4]},
+        "sigma_f": {"values": [1e-5, 1e-4, 1e-3, 1e-2, 0.1, 1, 10, 1e2, 1e3, 1e4]},
     },
 }
 
