@@ -51,8 +51,30 @@ class KMP:
         self.kl_divergence = None
         self.tol = adaptation_tol
         self.time_driven_kernel = time_driven_kernel
+        self._verbose = verbose
         self._logger = logging.getLogger(__name__)
         self._logger.setLevel(level=logging.DEBUG if verbose else logging.INFO)
+
+    @property
+    def verbose(self) -> bool:
+        """
+        Get the value of verbose.
+
+        Returns:
+            bool: The value of verbose.
+        """
+        return self._verbose
+
+    @verbose.setter
+    def verbose(self, value: bool) -> None:
+        """
+        Set the value of verbose.
+
+        Args:
+            value (bool): The new value for verbose.
+        """
+        self._verbose = value
+        self._logger.setLevel(level=logging.DEBUG if self._verbose else logging.INFO)
 
     def set_waypoint(self, 
                      s: np.ndarray, 
@@ -155,7 +177,7 @@ class KMP:
                         self.l * self.sigma[:, :, i]
                     )
         self._estimator = inv(k)
-        self._logger.info("KMP fit done.")
+        self._logger.debug("KMP fit done.")
 
     def predict(self, s: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Carry out a prediction on the mean and covariance associated to the given input.
@@ -191,7 +213,7 @@ class KMP:
             sigma[:, :, j] = self.alpha * (
                 self.__kernel_matrix(s[:, j], s[:, j]) - k @ self._estimator @ k.T
             )
-        self._logger.info("KMP predict done.")
+        self._logger.debug("KMP predict done.")
         #self.kl_divergence = self.KL_divergence(xi, sigma, self.xi, self.sigma)
         self.kl_divergence = self.mean_kl_divergence(xi, sigma, self.xi, self.sigma)
 
@@ -239,7 +261,7 @@ class KMP:
             Returns:
             mean_kl_divergence: mean KL divergence value
         """
-        num_points = trajectory1_means.shape[1]
+        num_points = min(trajectory1_means.shape[1], trajectory2_means.shape[1])
         kl_divergences = np.zeros(num_points)
 
         for i in range(num_points):
