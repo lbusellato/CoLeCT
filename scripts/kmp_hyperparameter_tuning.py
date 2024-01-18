@@ -1,18 +1,19 @@
 import copy
-import matplotlib.pyplot as plt
 import numpy as np
 import wandb
 
 from os.path import dirname, abspath
 from colect.dataset import load_datasets, as_array
+from colect.datatypes import Quaternion
 from colect.mixture import GaussianMixtureModel
 from colect.kmp import KMP
+from colect.utils import linear_traj
 
 wandb.login()
 
 ROOT = dirname(dirname(abspath(__file__)))
 subsample = 10
-
+    
 # Load the demonstrations
 datasets = load_datasets('demonstrations/top_vase')
 datasets = datasets[:5]
@@ -44,11 +45,19 @@ gmm = GaussianMixtureModel(n_components=10, n_demos=H)
 gmm.fit(X_force)
 mu_force, sigma_force = gmm.predict(x_gmr_pose)
 
+# Data for KMP prediction -> validation
+qa = datasets[0][0].rot
+rot_vector = np.array([3.073, -0.652, 0.0])
+quat = Quaternion.from_rotation_vector(rot_vector)
+start_pose = np.array([-0.365, 0.290, 0.05,quat[0],quat[1],quat[2],quat[3]])
+end_pose = np.array([-0.465, 0.290, 0.05,quat[0],quat[1],quat[2],quat[3]])
+x_kmp = linear_traj(start_pose, end_pose, n_points=N, qa=qa).T
+
 # Define objective/training function for KMP
 def kmp_objective(mu, sigma, config):
     kmp = KMP(l=config.l, alpha=config.alpha, sigma_f=config.sigma_f)
     kmp.fit(x_gmr_pose, mu, sigma)
-    kmp.predict(x_gmr_pose)
+    kmp.predict(x_kmp)
     return kmp.l, kmp.alpha, kmp.sigma_f, kmp.kl_divergence
 
 def kmp_main(mu, sigma):

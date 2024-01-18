@@ -2,11 +2,13 @@ import copy
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
+import joblib
 import time
 
 from matplotlib.patches import Ellipse
 from os.path import dirname, abspath, join
 from colect.dataset import load_datasets, as_array
+from colect.datatypes import Quaternion
 from colect.mixture import GaussianMixtureModel
 from colect.kmp import KMP
 from colect.utils import linear_traj
@@ -49,31 +51,34 @@ def main():
     X_force = extract_input_data(datasets)
 
     qa = datasets[0][0].rot
-    quat = np.array([0.985, -0.168, -0.009, -0.029])
-    quat = quat / np.linalg.norm(quat)
-    start_pose = np.array([-0.337, 0.285, -0.358,quat[0],quat[1],quat[2],quat[3]])
-    end_pose = np.array([-0.437, 0.285, -0.358,quat[0],quat[1],quat[2],quat[3]])
+    rot_vector = np.array([3.073, -0.652, 0.0])
+    quat = Quaternion.from_rotation_vector(rot_vector)
+    start_pose = np.array([-0.365, 0.290, 0.05,quat[0],quat[1],quat[2],quat[3]])
+    end_pose = np.array([-0.465, 0.290, 0.05,quat[0],quat[1],quat[2],quat[3]])
+    N_traj = N
     x_kmp = linear_traj(start_pose, end_pose, n_points=N, qa=qa).T
-
+    np.save(join(ROOT, "trained_models", "traj.npy"), x_kmp)
     # GMM/GMR on the force
     gmm = GaussianMixtureModel(n_components=10, n_demos=H)
     gmm.fit(X_force)
     mu_force, sigma_force = gmm.predict(x_gmr)
 
     # KMP on the force
-    kmp = KMP(l=5e-3, alpha=2e3, sigma_f=750, verbose=True)
+    #l=5e-3, alpha=2e3, sigma_f=750 original
+    #l=1, alpha=51.795, sigma_f=0.00005179 overfitted, avg kl_div 10
+
+    kmp = KMP(l=7e-5, alpha=1, sigma_f=1e5, verbose=True)
     kmp.fit(x_kmp, mu_force, sigma_force)
 
-    #np.save(join(ROOT, "trained_models", "top_vase_kmp.py"), kmp)
+    joblib.dump(kmp, join(ROOT, "trained_models", "kmp.mdl"))
 
-    qa = datasets[0][0].rot
-    quat = np.array([0.985, -0.168, -0.009, -0.029])
-    quat = quat / np.linalg.norm(quat)
-    start_pose = np.array([-0.337, 0.285, -0.358,quat[0],quat[1],quat[2],quat[3]])
-    end_pose = np.array([-0.337, 0.185, -0.358,quat[0],quat[1],quat[2],quat[3]])
-    x_kmp2 = linear_traj(start_pose, end_pose, n_points=N, qa=qa).T
+    start_pose = np.array([-0.365, 0.290, 0.05,quat[0],quat[1],quat[2],quat[3]])
+    end_pose = np.array([-0.415, 0.290, 0.05,quat[0],quat[1],quat[2],quat[3]])
+    N_traj = int(N/2)
+    x_kmp2 = linear_traj(start_pose, end_pose, n_points=N_traj, qa=qa).T
 
-    mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp)
+    x = x_kmp2
+    mu_force_kmp, sigma_force_kmp = kmp.predict(x)
     print(kmp.kl_divergence)
     
     test = x_kmp[:, 0]
@@ -83,17 +88,17 @@ def main():
     print(f"Elapsed: {elapsed}")
 
     t_gmr = dt * np.arange(1,N+1)
-    
+    t_traj = dt * np.arange(1, N_traj + 1)
     # Plot KMP vs GMR
     fig_vs, ax = plt.subplots(3, 3, figsize=(16, 8))
     for dataset in datasets:
         plot_demo(ax, dataset, demo_duration)
         
     for i in range(3):
-        ax[0,i].plot(t_gmr, x_kmp[i,:], color="green")
-        ax[1,i].plot(t_gmr, x_kmp[i + 3,:], color="green")
+        ax[0,i].plot(t_traj, x[i,:], color="green")
+        ax[1,i].plot(t_traj, x[i + 3,:], color="green")
         ax[2,i].plot(t_gmr, mu_force[i, :],color="red")
-        ax[2,i].plot(t_gmr, mu_force_kmp[i, :],color="green")
+        ax[2,i].plot(t_traj, mu_force_kmp[i, :],color="green")
         
     fig_vs.suptitle("Top vase sliding task - GMR vs KMP")
     fig_vs.tight_layout()

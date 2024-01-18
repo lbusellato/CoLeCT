@@ -342,3 +342,9 @@ class Quaternion:
             self.v = value
         else:
             self.u[index-1] = value
+
+    def __str__(self) -> str:
+        """Class string representation.
+        """
+        return f"{self.as_array()}"
+
