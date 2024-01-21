@@ -4,7 +4,6 @@ certifi==2023.7.22
 cfgv==3.4.0
 charset-normalizer==3.3.0
 click==8.1.7
--e git+ssh://git@github.com/lbusellato/CoLeCT.git@a5c307bba7455dc5ad407b051db178a01091485c#egg=CoLeCT
 colored==1.4.4
 contourpy==1.1.1
 cycler==0.12.0
