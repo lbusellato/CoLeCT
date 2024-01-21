@@ -55,9 +55,34 @@ class KMP:
         self.tol = adaptation_tol
         
         self.time_driven_kernel = time_driven_kernel
+<<<<<<< HEAD
 
+=======
+        self._verbose = verbose
+>>>>>>> a5c307bba7455dc5ad407b051db178a01091485c
         self._logger = logging.getLogger(__name__)
         self._logger.setLevel(level=logging.DEBUG if verbose else logging.INFO)
+
+    @property
+    def verbose(self) -> bool:
+        """
+        Get the value of verbose.
+
+        Returns:
+            bool: The value of verbose.
+        """
+        return self._verbose
+
+    @verbose.setter
+    def verbose(self, value: bool) -> None:
+        """
+        Set the value of verbose.
+
+        Args:
+            value (bool): The new value for verbose.
+        """
+        self._verbose = value
+        self._logger.setLevel(level=logging.DEBUG if self._verbose else logging.INFO)
 
     def set_waypoint(self, 
                      s: np.ndarray, 
@@ -167,10 +192,13 @@ class KMP:
                         self.l * self.sigma[:, :, i]
                     )
         self._estimator = inv(k)
+<<<<<<< HEAD
         # In the original MATLAB code Y was computed inside the predict loop, however that's really
         # inefficient. I do the computation here, to speed up the prediction step.
         self.Y = self.xi.T.flatten()
         self._mean_estimator = self.Y @ self._estimator
+=======
+>>>>>>> a5c307bba7455dc5ad407b051db178a01091485c
         self._logger.debug("KMP fit done.")
 
     def predict(self, s: np.ndarray, compute_KL: bool=False) -> Tuple[np.ndarray, np.ndarray]:
@@ -196,6 +224,7 @@ class KMP:
             s = s.reshape((s.size, 1))
         xi = np.zeros((self.O, s.shape[1]))
         sigma = np.zeros((self.O, self.O, s.shape[1]))
+<<<<<<< HEAD
         # List comprehensions make everything a tad faster than for loops
         K1 = self.__kernel_matrix(s, s)
         ss = [np.tile(s_, (self.s.shape[1], 1)).T for s_ in zip(*s)]
@@ -205,6 +234,24 @@ class KMP:
         self._logger.debug("KMP predict done.")
         if compute_KL:
             self.kl_divergence = self.mean_kl_divergence(xi, sigma, self.xi, self.sigma)
+=======
+        for j in range(s.shape[1]):
+            k = np.zeros((self.O, self.N * self.O))
+            Y = np.zeros(self.N * self.O)
+            for i in range(self.N):
+                k[:, i * self.O : (i + 1) * self.O] = self.__kernel_matrix(
+                    s[:, j], self.s[:, i]
+                )
+                for h in range(self.O):
+                    Y[i * self.O + h] = self.xi[h, i]
+            xi[:, j] = k @ self._estimator @ Y
+            sigma[:, :, j] = self.alpha * (
+                self.__kernel_matrix(s[:, j], s[:, j]) - k @ self._estimator @ k.T
+            )
+        self._logger.debug("KMP predict done.")
+        #self.kl_divergence = self.KL_divergence(xi, sigma, self.xi, self.sigma)
+        self.kl_divergence = self.mean_kl_divergence(xi, sigma, self.xi, self.sigma)
+>>>>>>> a5c307bba7455dc5ad407b051db178a01091485c
 
         return xi, sigma
 
@@ -250,7 +297,7 @@ class KMP:
             Returns:
             mean_kl_divergence: mean KL divergence value
         """
-        num_points = trajectory1_means.shape[1]
+        num_points = min(trajectory1_means.shape[1], trajectory2_means.shape[1])
         kl_divergences = np.zeros(num_points)
 
         for i in range(num_points):

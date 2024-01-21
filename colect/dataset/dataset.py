@@ -49,7 +49,7 @@ def create_dataset(demonstrations_path: str = '', subsample: int = 2) -> None:
                     timestamp = float(row['timestamp'])
                     x = float(row['pos_x'])
                     y = float(row['pos_y'])
-                    z = float(row['pos_z'])
+                    z = float(row['pos_z']) 
                     w = float(row['quat_w'])
                     wx = float(row['quat_x'])
                     wy = float(row['quat_y'])
@@ -208,6 +208,8 @@ def to_base_frame(datasets_path: str = '') -> None:
         # Rotation
         new[:, [3, 4]] = new[:, [4, 3]]
         new[:, 3] *= -1
+        # Force sensed by the recorder and sensed by the robot have opposite sign for the same direction in z
+        new[:, 14] *= -1
         # Quaternions
         for i in range(new.shape[0]):
             old_quat = Quaternion.from_array(new[i, 5:9])
