@@ -1,194 +1,213 @@
-import rtde_control
-import rtde_receive
+import csv
+import joblib
+import logging
+import matplotlib.pyplot as plt
 import numpy as np
+import quaternion
+import sys
 import time
 
-from control import lqr
-from os.path import join, dirname, abspath, exists
-from colect.hex12 import HEX12
+from os.path import join, dirname, abspath
+from pytransform3d import transformations as pt
+
+from colect.filters.lowpass_filter import LowPassFilter
+from colect.robot import URRobot, DataRecording
+from colect.utils import linear_traj
+from colect.utils.math import *
+from colect.controller.AdmittanceController import AdmittanceController
+
+_logger = logging.getLogger('colect')
+
+
+def setup_logging(loglevel):
+    """Setup basic logging
+
+    Args:
+      loglevel (int): minimum loglevel for emitting messages
+    """
+    logformat = "[%(asctime)s] %(levelname)s: %(message)s"
+    logging.basicConfig(level=loglevel, stream=sys.stdout,
+                        format=logformat, datefmt="%Y-%m-%d %H:%M:%S")
 
 ROOT = dirname(dirname(abspath(__file__)))
 
-def symmetrize(matrices):
-    for i in range(matrices.shape[-1]):
-        matrix = matrices[:,:,i]
-        matrices[:,:,i] = (matrix + matrix.T) / 2
-    return matrices
+approach_position = np.array([-0.365, 0.290, 0.212])
+tcp_orientation = np.array([np.pi, 0.0, 0.0])
+scan_start = np.array([-0.365, 0.290, -0.008])
+scan_end = np.array([-0.465, 0.290, -0.008])
+start_position = np.array([-0.365, 0.290, 0.0425])
+end_position = np.array([-0.465, 0.290, 0.0425])
 
-def to_axis_angle(rotations):
-    axis_angle = np.zeros((3, rotations.shape[-1]))
-    for i in range(rotations.shape[-1]):    
-        quaternion = np.array(rotations[:,i])
-        # Extract the angle of rotation
-        angle = 2*np.arccos(quaternion[0])  # Angle in radians
-        # Avoid division by zero for small angles
-        if np.abs(angle) > 1e-8:
-            # Extract the axis of rotation
-            axis = quaternion[1:] / np.sin(angle/2)
-            axis_angle[:,i] = (angle)*axis
-    return axis_angle
+APPROACH_POSE = np.concatenate((approach_position, tcp_orientation))
+START_POSE = np.concatenate((start_position, tcp_orientation))
 
-current_force = np.zeros(3)
-def hex12_callback(wrench) -> None:
-    global current_force
-    current_force = np.round(wrench[:3], 3)
+def main():
+    
+    robot_ip = "192.168.1.11"
 
-def main():    
-    rtde_c = rtde_control.RTDEControlInterface("192.168.1.11")
-    rtde_r = rtde_receive.RTDEReceiveInterface("192.168.1.11")
+    setup_logging(logging.INFO)
 
-    # Pull the KMP trajectories
-    pos = np.load(join(ROOT, 'trained_models/mu_pos_kmp.npy'))
-    rot = np.load(join(ROOT, 'trained_models/kmp_rot_vectors.npy'))
-    poses = np.vstack((pos[:3,:], rot))
-    poses[2, :] -= 0.005 # This is just because the single point task has a wrong origin offset
-    forces = np.load(join(ROOT, 'trained_models/mu_force_kmp.npy'))[:3,:]
-    """# Pull the KMP uncertainties
-    pos_uncert = np.load(join(ROOT, 'trained_models/sigma_pos_kmp.npy'))
-    pos_uncert = symmetrize(pos_uncert)
-    rot_uncert = np.load(join(ROOT, 'trained_models/sigma_rot_kmp.npy'))
-    rot_uncert = symmetrize(rot_uncert)
-    forces_uncert = np.load(join(ROOT, 'trained_models/sigma_force_kmp.npy'))
-    forces_uncert = symmetrize(forces_uncert)
-    # Precompute precisions
-    if not exists(join(ROOT, 'controller/sigma_pos_kmp_inv.npy')):
-        pos_uncert_inv = np.zeros_like(pos_uncert)
-        for i in range(pos_uncert.shape[2]):
-            pos_uncert_inv[:,:,i] = np.matrix.round(np.linalg.inv(pos_uncert[:,:,i]), 2)
-        np.save(join(ROOT, 'controller/sigma_pos_kmp_inv.npy'), pos_uncert_inv)
-    else:
-        pos_uncert_inv = np.load(join(ROOT, 'controller/sigma_pos_kmp_inv.npy'))
-    if not exists(join(ROOT, 'controller/sigma_rot_kmp_inv.npy')):
-        rot_uncert_inv = np.zeros_like(rot_uncert)
-        for i in range(rot_uncert.shape[2]):
-            rot_uncert_inv[:,:,i] = np.matrix.round(np.linalg.inv(rot_uncert[:,:,i]), 2)
-        np.save(join(ROOT, 'controller/sigma_rot_kmp_inv.npy'), rot_uncert_inv)
-    else:
-        rot_uncert_inv = np.load(join(ROOT, 'controller/sigma_rot_kmp_inv.npy'))
-    if not exists(join(ROOT, 'controller/sigma_force_kmp_inv.npy')):
-        force_uncert_inv = np.zeros_like(forces_uncert)
-        for i in range(rot_uncert.shape[2]):
-            force_uncert_inv[:,:,i] = np.matrix.round(np.linalg.inv(forces_uncert[:,:,i]), 2)
-        np.save(join(ROOT, 'controller/sigma_force_kmp_inv.npy'), force_uncert_inv)
-    else:
-        rot_uncert_inv = np.load(join(ROOT, 'controller/sigma_rot_kmp_inv.npy'))
-    # Compute the gains for the position controller using LQR
-    if not exists(join(ROOT, 'controller/KP_pos_gains.npy')):
-        A = np.block([[np.zeros((3,3)), np.eye(3)],[np.zeros((3,3)), np.zeros((3,3))]])
-        B = np.block([[np.zeros((3,3))],[np.eye(3)]])
-        gain_magnitude_penalty = 10000
-        R = np.eye(3)*gain_magnitude_penalty
-        # Gain computation
-        KP_pos = []
-        KD_pos = []
-        for i in range(pos_uncert_inv.shape[2]):
-            Q = pos_uncert_inv[:,:,i]
-            Q = (Q + Q.T) / 2
-            K, S, E = lqr(A, B, Q, R)
-            KP_pos.append(np.diag((K[0,0],K[1,1],K[2,2])))
-            KD_pos.append(np.diag((K[0,3],K[1,4],K[2,5])))
-        KP_pos = np.array(KP_pos)
-        KD_pos = np.array(KD_pos)
-        np.save(join(ROOT, 'controller/KP_pos_gains.npy'), KP_pos)
-        np.save(join(ROOT, 'controller/KD_pos_gains.npy'), KD_pos)
-    else:
-        KP_pos = np.load(join(ROOT, 'controller/KP_pos_gains.npy'))
-        KD_pos = np.load(join(ROOT, 'controller/KD_pos_gains.npy'))
-    # Compute the gains for the orientation controller using LQR
-    if not exists(join(ROOT, 'controller/KP_rot_gains.npy')):
-        A = np.block([[np.zeros((3,3)), np.eye(3)],[np.zeros((3,3)), np.zeros((3,3))]])
-        B = np.block([[np.zeros((3,3))],[np.eye(3)]])
-        gain_magnitude_penalty = 10000
-        R = np.eye(3)*gain_magnitude_penalty
-        # Gain computation
-        KP_rot = []
-        KD_rot = []
-        for i in range(rot_uncert_inv.shape[2]):
-            Q = rot_uncert_inv[:,:,i]
-            Q = (Q + Q.T) / 2
-            K, S, E = lqr(A, B, Q, R)
-            KP_rot.append(np.diag((K[0,0],K[1,1],K[2,2])))
-            KD_rot.append(np.diag((K[0,3],K[1,4],K[2,5])))
-        KP_rot = np.array(KP_rot)
-        KD_rot = np.array(KD_rot)
-        np.save(join(ROOT, 'controller/KP_rot_gains.npy'), KP_rot)
-        np.save(join(ROOT, 'controller/KD_rot_gains.npy'), KD_rot)
-    else:
-        KP_rot = np.load(join(ROOT, 'controller/KP_rot_gains.npy'))
-        KD_rot = np.load(join(ROOT, 'controller/KD_rot_gains.npy'))# Compute the gains for the orientation controller using LQR
-    if not exists(join(ROOT, 'controller/KP_force_gains.npy')):
-        A = np.block([[np.zeros((3,3)), np.eye(3)],[np.zeros((3,3)), np.zeros((3,3))]])
-        B = np.block([[np.zeros((3,3))],[np.eye(3)]])
-        gain_magnitude_penalty = 10000
-        R = np.eye(3)*gain_magnitude_penalty
-        # Gain computation
-        KP_force = []
-        KI_force = []
-        for i in range(force_uncert_inv.shape[2]):
-            Q = force_uncert_inv[:,:,i]
-            Q = (Q + Q.T) / 2
-            K, S, E = lqr(A, B, Q, R)
-            KP_force.append(np.diag((K[0,0],K[1,1],K[2,2])))
-            KI_force.append(np.diag((K[0,3],K[1,4],K[2,5])))
-        KP_force = np.array(KP_force)
-        KI_force = np.array(KI_force)
-        np.save(join(ROOT, 'controller/KP_force_gains.npy'), KP_force)
-        np.save(join(ROOT, 'controller/KI_force_gains.npy'), KI_force)
-    else:
-        KP_force = np.load(join(ROOT, 'controller/KP_force_gains.npy'))
-        KI_force = np.load(join(ROOT, 'controller/KI_force_gains.npy'))"""
-    #These look like good values
-    KD_pos = np.eye(3)*0.5
-    KP_pos = np.eye(3)*50
-    KD_rot = np.eye(3)*0.1
-    KP_rot = np.eye(3)*5
-    KP_force = np.eye(3)*0.0001
-    KI_force = np.eye(3)*0.0008
-    # Setup the force sensor
-    hex12 = HEX12(callback=hex12_callback)
-    hex12.start()
-    # Go home
-    rtde_c.moveJ([0.0, -np.pi/2, 0.0, -np.pi/2, 0.0, 0.0])
-    # Go to the start of the trajectory
-    pose = poses[:,0]
-    rtde_c.moveJ_IK(pose=pose, speed = 0.5)
-    # Execute the trajectory
-    dt = 1/500
-    i_force_error = 0
-    global current_force
-    recorded_poses = []
-    recorded_speeds = []
-    recorded_forces = []
-    for i in range(poses.shape[-1]):
-        t_start = rtde_c.initPeriod()
-        # Get the state of the robot
-        current_pose = rtde_r.getActualTCPPose()
-        current_speed = rtde_r.getActualTCPSpeed()
-        recorded_poses.append(current_pose)
-        recorded_speeds.append(current_speed)
-        recorded_forces.append(current_force)
-        # Compute the force errors
-        force_error = (forces[:,i] - current_force).reshape(-1,1)
-        i_force_error += force_error * dt
-        # Output of the outer force loop
-        dx_force = (KP_force@force_error + KI_force@i_force_error).flatten()
-        # Compute the pose error
-        pos_error = (dx_force + poses[:3,i] - current_pose[:3]).reshape(-1,1)
-        rot_error = (poses[3:,i] - current_pose[3:]).reshape(-1,1)
-        # Compute the velocity command
-        dxe1 = (KD_pos@(KP_pos@pos_error - np.array(current_speed[:3]).reshape(-1,1))).flatten()
-        dxe2 = (KD_rot@(KP_rot@rot_error - np.array(current_speed[3:]).reshape(-1,1))).flatten()
-        dxe = np.concatenate((dxe1, dxe2))
-        # Send the commands
-        rtde_c.speedL(dxe)
-        rtde_c.waitPeriod(t_start)
-    rtde_c.speedStop()
-    # Go home
-    rtde_c.moveJ([0.0, -np.pi/2, 0.0, -np.pi/2, 0.0, 0.0])
-    rtde_c.stopScript()
-    np.save(join(ROOT, "controller/recorded_poses.npy"), np.array(recorded_poses))
-    np.save(join(ROOT, "controller/recorded_speeds.npy"), np.array(recorded_speeds))
-    np.save(join(ROOT, "controller/recorded_forces.npy"), np.array(recorded_forces))
+    frequency = 500.0  # Hz
+    dt = 1 / frequency
 
-if __name__ == '__main__':
+    _logger.info("Initializing robot...")
+    ur_robot = URRobot(robot_ip)
+
+    ur_robot.moveJ(np.array([0.0, -np.pi/2, 0.0, -np.pi/2, 0.0, 0.0]))
+    time.sleep(0.5)
+    ur_robot.moveJ_IK(APPROACH_POSE)
+    time.sleep(0.5)
+    ur_robot.receive_data()
+    time.sleep(0.5)
+    ur_robot.zero_ft_sensor()
+    time.sleep(0.5)
+    ur_robot.moveJ_IK(START_POSE)
+    time.sleep(0.5)
+    #input("Press any key to start")
+
+    # receive initial robot data
+    ur_robot.receive_data()
+
+    # get current robot pose
+    T_base_tcp = get_robot_pose_as_transform(ur_robot)
+
+    # get tip in base as position and quaternion
+    T_base_tcp_pq = pt.pq_from_transform(T_base_tcp)
+    T_base_tcp_pos_init = T_base_tcp_pq[0:3]
+    T_base_tcp_quat_init = T_base_tcp_pq[3:7]
+
+    _logger.info("Initializing AdmittanceController...")
+    adm_controller = AdmittanceController(start_position=T_base_tcp_pos_init, start_orientation=T_base_tcp_quat_init,
+                                                  start_ft=ur_robot.ft)
+    _logger.info("Starting AdmittanceController!")
+
+    # Controller gains
+    #adm_controller.M = np.diag([2.5, 2.5, 2.5])
+    #adm_controller.D = np.diag([500, 500, 100]) 
+    #adm_controller.K = np.diag([5*54, 5*54, 0.0])
+    adm_controller.M = np.diag([2.5, 2.5, 0.3])
+    adm_controller.D = np.diag([500, 500, 25]) 
+    adm_controller.K = np.diag([5*54, 5*54, 20])
+
+    adm_controller.Mo = np.diag([0.25, 0.25, 0.25])
+    adm_controller.Do = np.diag([150.0, 150.0, 100.0])
+    adm_controller.Ko = np.diag([50, 50, 50])
+
+    # Feedforward force terms -> force target
+    f_target = np.array([0, 0, 0])
+
+    # Generate both the sliding trajectory as well as KMP's input trajectory
+    N = 250
+    x_kmp = linear_traj(scan_start, scan_end, n_points=N).T
+    x_traj = linear_traj(start_position, end_position, n_points=N).T
+    i = 0
+
+    # Load the trained model
+    kmp = joblib.load(join(ROOT, "trained_models", "kmp.mdl"))
+    kmp.verbose = False
+
+    # Set up recording
+    recording_dir = join(ROOT, "reproductions")
+    recording_filename = "recording_" + time.strftime("%Y%m%d-%H%M%S") + '.csv'
+    recorder = DataRecording(robot_ip=robot_ip, directory=recording_dir, filename=recording_filename, frequency=frequency)
+    recorder.add_data_labels(['target_TCP_force_0',
+                              'target_TCP_force_1',
+                              'target_TCP_force_2',
+                              'target_TCP_force_3',
+                              'target_TCP_force_4',
+                              'target_TCP_force_5',
+                              'kmp_target_TCP_pose_0',
+                              'kmp_target_TCP_pose_1',
+                              'kmp_target_TCP_pose_2',
+                              'kmp_target_TCP_pose_3',
+                              'kmp_target_TCP_pose_4',
+                              'kmp_target_TCP_pose_5',])
+    recorder.start()
+
+    do_homing = True
+    done = False
+    try:
+        while not done:
+            start_time = time.perf_counter()
+
+            ur_robot.receive_data()
+
+            # Get current robot pose
+            T_base_tcp = get_robot_pose_as_transform(ur_robot)
+
+            # Get tip in base as position and quaternion
+            T_base_tcp_pq = pt.pq_from_transform(T_base_tcp)
+            T_base_tcp_pos = T_base_tcp_pq[0:3]
+            T_base_tcp_quat = T_base_tcp_pq[3:7]
+
+            # Filter force torque in base measured at TCP
+            f_base = ur_robot.ft[0:3]
+            mu_base = ur_robot.ft[3:6]
+
+            # Rotate forces from base frame to TCP frame (necessary on a UR robot)
+            R_tcp_base = np.linalg.inv(T_base_tcp[:3, :3])
+            f_tcp = R_tcp_base @ f_base
+            mu_tcp = R_tcp_base @ mu_base
+
+            # Rotate forces back to base frame
+            R_base_tcp = T_base_tcp[:3, :3]
+            f_base_tcp = R_base_tcp @ f_tcp
+
+            x_desired = x_traj[:, i]
+            f_target_kmp, _ = kmp.predict(np.array([x_kmp[2, i]]))
+            f_target = np.array([0.0, 0.0, f_target_kmp[0][0]/3])
+
+            # The input position and orientation is given as tip in base
+            adm_controller.pos_input = T_base_tcp_pos
+            adm_controller.rot_input = quaternion.from_float_array(T_base_tcp_quat)
+            adm_controller.q_input = ur_robot.getActualQ()
+            adm_controller.ft_input = np.hstack((f_base_tcp + f_target, mu_tcp))
+
+            adm_controller.set_desired_frame(x_desired, quaternion.from_float_array(T_base_tcp_quat_init))
+
+            # Step the execution of the admittance controller
+            adm_controller.step()
+            output = adm_controller.get_output()
+            output_position = output[0:3]
+            output_quat = output[3:7]
+
+            T_base_tcp_out = pt.transform_from_pq(np.hstack((output_position, output_quat)))
+            base_tcp_out_ur_pose = get_transform_as_ur_pose(T_base_tcp_out)
+
+            # Set position target of the robot
+            ur_robot.pos_target = base_tcp_out_ur_pose
+            ur_robot.control_step()
+
+            # Record data
+            recorder.add_data(np.hstack((f_target, mu_tcp, x_desired, tcp_orientation)))
+
+            # Next traj point, end if there isn't one
+            i += 1
+            if i >= x_traj.shape[1]:
+                done = True
+
+            # Ensure constant cycle time
+            end_time = time.perf_counter()
+            cycle_time = start_time - end_time
+            if cycle_time < dt:
+                time.sleep(dt - cycle_time)
+    except KeyboardInterrupt:
+        # CTRL-C caught, don't move the robot further
+        do_homing = False
+
+    # Stop the recording
+    recorder.stop()
+
+    # Stop the robot
+    ur_robot.stop_control()
+
+    if do_homing:
+        # Return to the home pose
+        time.sleep(0.5)
+        ur_robot.moveJ(np.array([0.0, -np.pi/2, 0.0, -np.pi/2, 0.0, 0.0]))
+        time.sleep(0.5)
+        
+    recorder.verify_data_integrity(max_num_of_missed_samples=100)
+
+if __name__ == "__main__":
     main()

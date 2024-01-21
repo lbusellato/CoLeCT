@@ -61,29 +61,36 @@ def linear_traj(start: np.ndarray, end: np.ndarray, n_points: int = 100, qa = No
     """
 
     # Extract position and quaternion from start and end poses
-    start_pos, start_quat = start[:3], start[3:]
-    end_pos, end_quat = end[:3], end[3:]
+    if start.shape[0] > 3:
+        start_pos, start_quat = start[:3], start[3:]
+        end_pos, end_quat = end[:3], end[3:]
+    else:
+        start_pos = start[:3]
+        end_pos = end[:3]
 
     # Generate linear trajectory between start and end
     positions = [start_pos + i/n_points * (end_pos - start_pos) for i in range(n_points)]
-    start_rot = Rotation.from_quat(start_quat)
-    end_rot = Rotation.from_quat(end_quat)
-    key_rots = Rotation.concatenate([start_rot, end_rot])
-    key_times = [0,1]
-    slerp = Slerp(key_times, key_rots)
-    rotations = slerp(np.arange(n_points)/n_points)
-    rotations = Rotation.as_quat(rotations)
+    if start.shape[0] > 3:
+        start_rot = Rotation.from_quat(start_quat)
+        end_rot = Rotation.from_quat(end_quat)
+        key_rots = Rotation.concatenate([start_rot, end_rot])
+        key_times = [0,1]
+        slerp = Slerp(key_times, key_rots)
+        rotations = slerp(np.arange(n_points)/n_points)
+        rotations = Rotation.as_quat(rotations)
 
-    if qa is not None:
-        quats = []
-        for quat in rotations:
-            qx, qy, qz, w = quat
-            quats.append((Quaternion.from_array([w, qx, qy, qz])*~qa).log())
-        rotations = np.array(quats)
+        if qa is not None:
+            quats = []
+            for quat in rotations:
+                qx, qy, qz, w = quat
+                quats.append((Quaternion.from_array([w, qx, qy, qz])*~qa).log())
+            rotations = np.array(quats)
 
 
-    # Combine positions and orientations to form the trajectory
-    traj = np.column_stack((positions, rotations))
+        # Combine positions and orientations to form the trajectory
+        traj = np.column_stack((positions, rotations))
+    else:
+        traj = np.array(positions)
 
     return traj
 

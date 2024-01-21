@@ -47,10 +47,10 @@ class URRobot(Robot, RTDEControl, RTDEReceive):
         self._servo_vel = 0.0  # Not used currently
         self._servo_acc = 0.0  # Not used currently
         self._servo_p_gain = 0.03  # proportional gain
-        self._servo_lookahead_t = 2000  # lookahead time
+        self._servo_lookahead_t = 1000  # lookahead time
 
-        self._deceleration_rate = 10.0  # m/s^2
-        self._vel_tool_acceleration = 35.0  # 1.4  # m/s^2
+        self._deceleration_rate = 20.0  # m/s^2
+        self._vel_tool_acceleration = 1.0  # 1.4  # m/s^2
 
         # Init robot targets
         self.pos_target = self.getActualTCPPose()
@@ -68,7 +68,15 @@ class URRobot(Robot, RTDEControl, RTDEReceive):
         actual_tcp_pose = self.getActualTCPPose()
         self.position_ = np.array(actual_tcp_pose[0:3])
         self.rotation_ = quaternion.from_rotation_vector(np.array(actual_tcp_pose[3:6]))
+        self.rotation_vector_ = np.array(actual_tcp_pose[3:6])
         self.ft_ = self.getActualTCPForce()
+
+    def get_state(self, time = 0):
+       return np.concatenate(([time], 
+                              self.position,
+                              self.velocity,
+                              self.rotation_vector,
+                              self.ft))
 
     def control_step(self):
         """

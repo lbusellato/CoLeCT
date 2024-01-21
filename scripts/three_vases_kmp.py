@@ -3,6 +3,7 @@ import logging
 import matplotlib.pyplot as plt
 import numpy as np
 import time
+import joblib
 
 from matplotlib.patches import Ellipse
 from os.path import dirname, abspath, join
@@ -59,6 +60,7 @@ def main():
     end_pose = np.array([-1.35, 0., -0.01,quat[0],quat[1],quat[2],quat[3]])
     x_kmp = linear_traj(start_pose, end_pose, n_points=N, qa=qa).T
     x_kmp = x_kmp[2,:]
+    np.save(join(ROOT, "trained_models", "traj.py"), x_kmp)
 
     # GMM/GMR on the force
     gmm = GaussianMixtureModel(n_components=5, n_demos=H)
@@ -91,7 +93,7 @@ def main():
             kmp = KMP(l=l_, alpha=alpha_, sigma_f=sigma_f_, verbose=True, time_driven_kernel=False)
             kmp.fit(x_gmr, mu_force, sigma_force)
 
-            #np.save(join(ROOT, "trained_models", "top_vase_kmp.py"), kmp)
+            joblib.dump(kmp, join(ROOT, "trained_models", "kmp.mdl"))
 
             mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp.reshape(-1,1).T)
 
