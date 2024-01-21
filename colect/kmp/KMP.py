@@ -10,7 +10,7 @@ REALMIN = np.finfo(np.float64).tiny  # To avoid division by 0
 
 # Set up logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.debug,
     format="%(asctime)s.%(msecs)03d %(levelname)s %(message)s",
     datefmt="%Y-%m-%d,%H:%M:%S",
 )
@@ -45,12 +45,17 @@ class KMP:
         time_driven_kernel: bool = True,
         verbose: bool = False,
     ) -> None:
+        # Hyperparameters
         self.l = l
         self.alpha = alpha
         self.sigma_f = sigma_f
+        # KL divergence between training and prediction
         self.kl_divergence = None
+        # Tolerance for discriminating between conflicting points
         self.tol = adaptation_tol
+        
         self.time_driven_kernel = time_driven_kernel
+
         self._logger = logging.getLogger(__name__)
         self._logger.setLevel(level=logging.DEBUG if verbose else logging.INFO)
 
@@ -90,30 +95,34 @@ class KMP:
         # Refit the model with the new data
         self.fit(self.s, self.xi, self.sigma)
 
-    def __kernel_matrix(self, t1: float, t2: float) -> np.ndarray:
-        """Computes the kernel matrix for the given input pair.
+    def __kernel_matrix(self, t1, t2) -> np.ndarray:
+        """Computes the kernel matrices for the given input arrays.
 
         Parameters
         ----------
-        t1 : float
-            The first input.
-        t2 : float
-            The second input.
+        t1_array : np.ndarray or float
+            Array of first inputs.
+        t2_array : np.ndarray or float
+            Array of second inputs.
 
         Returns
         -------
-        kernel : np.ndarray of shape (n_features,n_features)
-            The kernel matrix evaluated in the provided input pair.
+        kernel_matrices : np.ndarray of shape (n_samples, n_features, n_features)
+            The kernel matrices evaluated for the provided input arrays.
         """
 
+
         def kernel(s1, s2):
-            return np.exp(-self.sigma_f * norm(s1 - s2) ** 2)
+            return np.exp(-self.sigma_f * norm(s1 - s2, axis=0) ** 2)
 
         # Compute the kernels
         dt = 0.001
         ktt = kernel(t1, t2)
         if not self.time_driven_kernel:
-            return ktt*np.eye(self.O)
+            if isinstance(ktt, np.ndarray):
+                return [ktt_*np.eye(self.O) for ktt_ in ktt]
+            else:
+                return ktt*np.eye(self.O)
         ktdt_tmp = kernel(t1, t2 + dt)
         kdtt_tmp = kernel(t1 + dt, t2)
         kdtdt_tmp = kernel(t1 + dt, t2 + dt)
@@ -123,7 +132,10 @@ class KMP:
         kdtdt = (kdtdt_tmp - ktdt_tmp - kdtt_tmp + ktt) / dt**2
         # Fill the kernel matrix
         O = self.O // 2
-        kernel_matrix = np.block([[ktt*np.eye(O), ktdt*np.eye(O)],[kdtt*np.eye(O), kdtdt*np.eye(O)]])
+        if isinstance(ktt, np.ndarray):
+            kernel_matrix = [np.block([[k1*np.eye(O), k2*np.eye(O)],[k3*np.eye(O), k4*np.eye(O)]]) for k1, k2, k3, k4 in zip(ktt, ktdt, kdtt, kdtdt)]
+        else:
+            kernel_matrix = np.block([[ktt*np.eye(O), ktdt*np.eye(O)],[kdtt*np.eye(O), kdtdt*np.eye(O)]])
 
         return kernel_matrix
 
@@ -155,15 +167,21 @@ class KMP:
                         self.l * self.sigma[:, :, i]
                     )
         self._estimator = inv(k)
-        self._logger.info("KMP fit done.")
+        # In the original MATLAB code Y was computed inside the predict loop, however that's really
+        # inefficient. I do the computation here, to speed up the prediction step.
+        self.Y = self.xi.T.flatten()
+        self._mean_estimator = self.Y @ self._estimator
+        self._logger.debug("KMP fit done.")
 
-    def predict(self, s: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+    def predict(self, s: np.ndarray, compute_KL: bool=False) -> Tuple[np.ndarray, np.ndarray]:
         """Carry out a prediction on the mean and covariance associated to the given input.
 
         Parameters
         ----------
         s : np.ndarray of shape (n_features,n_samples)
             The set of inputs to make a prediction of.
+        compute_KL : bool
+            Whether or not to compute the KL divergence. Should be True only while tuning the parameters (but not always even then).
 
         Returns
         -------
@@ -178,22 +196,15 @@ class KMP:
             s = s.reshape((s.size, 1))
         xi = np.zeros((self.O, s.shape[1]))
         sigma = np.zeros((self.O, self.O, s.shape[1]))
-        for j in range(s.shape[1]):
-            k = np.zeros((self.O, self.N * self.O))
-            Y = np.zeros(self.N * self.O)
-            for i in range(self.N):
-                k[:, i * self.O : (i + 1) * self.O] = self.__kernel_matrix(
-                    s[:, j], self.s[:, i]
-                )
-                for h in range(self.O):
-                    Y[i * self.O + h] = self.xi[h, i]
-            xi[:, j] = k @ self._estimator @ Y
-            sigma[:, :, j] = self.alpha * (
-                self.__kernel_matrix(s[:, j], s[:, j]) - k @ self._estimator @ k.T
-            )
-        self._logger.info("KMP predict done.")
-        #self.kl_divergence = self.KL_divergence(xi, sigma, self.xi, self.sigma)
-        self.kl_divergence = self.mean_kl_divergence(xi, sigma, self.xi, self.sigma)
+        # List comprehensions make everything a tad faster than for loops
+        K1 = self.__kernel_matrix(s, s)
+        ss = [np.tile(s_, (self.s.shape[1], 1)).T for s_ in zip(*s)]
+        K2 = [np.hstack(self.__kernel_matrix(ss_, self.s)) for ss_ in ss]
+        xi = np.array([k @ self._mean_estimator for k in K2]).T
+        sigma = np.array([self.alpha * (k1 - k2 @ self._estimator @ k2.T) for k1, k2 in zip(K1, K2)]).T
+        self._logger.debug("KMP predict done.")
+        if compute_KL:
+            self.kl_divergence = self.mean_kl_divergence(xi, sigma, self.xi, self.sigma)
 
         return xi, sigma
 

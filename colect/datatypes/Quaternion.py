@@ -342,3 +342,7 @@ class Quaternion:
             self.v = value
         else:
             self.u[index-1] = value
+
+    def __str__(self) -> str:
+        """String representation of self"""
+        return f"{self.u[0]}, {self.u[1]}, {self.u[2]}, {self.v}"

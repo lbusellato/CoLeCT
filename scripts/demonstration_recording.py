@@ -2,7 +2,7 @@ from colect.recorder import Recorder
 
 def main():
     # Demonstration recording
-    recorder = Recorder(server_address='10.85.14.39')
+    recorder = Recorder(server_address='10.85.14.202')
     recorder.run()
 
 
