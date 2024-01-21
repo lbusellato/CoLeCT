@@ -16,6 +16,7 @@ class Robot:
         self.velocity_ = np.array([0, 0, 0, 0, 0, 0])
         self.position_ = np.array([0, 0, 0])
         self.rotation_ = quaternion.quaternion(1.0, 0.0, 0.0, 0.0)
+        self.rotation_vector_ = np.array([0, 0, 0])
         self.ft_ = np.array([0, 0, 0, 0, 0, 0])
 
     def receive_data(self):
@@ -50,6 +51,15 @@ class Robot:
     @rotation.setter
     def rotation(self, value):
         self.rotation_ = value
+
+    @property
+    def rotation_vector(self):
+        """rotation_vector property"""
+        return self.rotation_vector_
+
+    @rotation_vector.setter
+    def rotation_vector(self, value):
+        self.rotation_vector_ = value
 
     @property
     def ft(self):
