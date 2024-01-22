@@ -49,7 +49,7 @@ def plot_demo(ax, demonstration, linewidth=1.0, color='blue', label=""):
 def main():
     # Showcase the dataset postprocessing operations
     # Process the .csv files into .npy files
-    path = 'demonstrations/experiment1'
+    path = 'demonstrations/experiment2'
     create_dataset(path, 20)
     # Trim any leading or trailing force-only samples
     trim_datasets(path)
@@ -57,8 +57,6 @@ def main():
     interpolate_datasets(path)
     # Transform the coordinates to the base robot frame
     to_base_frame(path)
-    # Transform the z coordinate into the delta-z from the phantom's surface
-    z_to_delta_z(path, z0=0.05)
     # Load the processed datasets
     processed = load_datasets(path)
     # Plot everything
@@ -73,8 +71,7 @@ def main():
     lower_t = input("Lower time cutoff (0 for no cutoff): ")
     upper_t = input("Upper time cutoff (0 for no cutoff): ")
     clip_datasets(path, float(lower_t), float(upper_t))
-    # Artificially remove the variation in y
-    #align_y(path)
+    flip_fz(path)
     check_quat_signs(path)
     processed = load_datasets(path)
     fz = [p.fz for dataset in processed for p in dataset]

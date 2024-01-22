@@ -70,8 +70,8 @@ fig, ax = plt.subplots(rows, cols, figsize=(20,6))
 for i in range(rows):
     for j in range(cols):
         sign = 1
-        # This is just because the target Fz (and so also Mx and My) has opposite sign wrt the one measured by the sensor
-        if axes[i * cols + j] in ["$F_z$ [N]", "$M_z$ [N]", "$M_y$ [N]"]:
+        # This is just because the target Fz has opposite sign wrt the one measured by the sensor
+        if axes[i * cols + j] in ["$F_z$ [N]"]:
             sign = -1 
         if i == 0 and j == 0:
             ax[i,j].plot(t, actual_data[i * cols + j], label = "actual")
