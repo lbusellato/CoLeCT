@@ -344,12 +344,5 @@ class Quaternion:
             self.u[index-1] = value
 
     def __str__(self) -> str:
-<<<<<<< HEAD
         """String representation of self"""
         return f"{self.u[0]}, {self.u[1]}, {self.u[2]}, {self.v}"
-=======
-        """Class string representation.
-        """
-        return f"{self.as_array()}"
-
->>>>>>> a5c307bba7455dc5ad407b051db178a01091485c

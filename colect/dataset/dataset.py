@@ -184,7 +184,7 @@ def slerp(time_missing : np.ndarray, time_known : np.ndarray, orientation_known 
     out = np.vstack(out)
     return out
 
-def to_base_frame(datasets_path: str = '') -> None:
+def to_base_frame(datasets_path: str = '',UR5_base_position = np.zeros(3)) -> None:
     """Transform the coordinates to the base frame of the robot
     """
     
@@ -199,7 +199,6 @@ def to_base_frame(datasets_path: str = '') -> None:
     # For Euclidean projection
     qa = None
     out = []
-    UR5_base_position = np.array([1.095, 0.885, 1.5770])
     for file in datasets:
         dataset = np.load(join(datasets_path, file), allow_pickle=True)
         new = as_array(dataset)
@@ -319,6 +318,18 @@ def z_to_delta_z(datasets_path: str='', z0: float = 0.05):
             z = p.z
             new_z = z - z0
             p.z = new_z
+        np.save(join(ROOT, datasets_path, file), dataset)
+
+def flip_fz(datasets_path: str=''):
+    datasets_path = join(ROOT, datasets_path)
+    files = [f for f in listdir(datasets_path) if f.endswith('.npy')]
+    files.sort()
+
+    for i, file in enumerate(files):
+        dataset = np.load(join(datasets_path, file), allow_pickle=True)
+        # Loop over the rest of the demonstrations and adjust the signs
+        for p in dataset:
+            p.fz = -p.fz
         np.save(join(ROOT, datasets_path, file), dataset)
 
 def align_y(datasets_path: str=''):

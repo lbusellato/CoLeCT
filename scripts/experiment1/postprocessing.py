@@ -49,14 +49,14 @@ def plot_demo(ax, demonstration, linewidth=1.0, color='blue', label=""):
 def main():
     # Showcase the dataset postprocessing operations
     # Process the .csv files into .npy files
-    path = 'demonstrations/experiment2'
+    path = 'demonstrations/experiment1'
     create_dataset(path, 20)
     # Trim any leading or trailing force-only samples
     trim_datasets(path)
     # Fill in the force-only samples by linearly interpolating the poses
     interpolate_datasets(path)
     # Transform the coordinates to the base robot frame
-    to_base_frame(path)
+    to_base_frame(path, UR5_base_position=np.array([1.8, 1.008, 1.6475]))
     # Load the processed datasets
     processed = load_datasets(path)
     # Plot everything
@@ -72,6 +72,7 @@ def main():
     upper_t = input("Upper time cutoff (0 for no cutoff): ")
     clip_datasets(path, float(lower_t), float(upper_t))
     check_quat_signs(path)
+    flip_fz(path)
     processed = load_datasets(path)
     fz = [p.fz for dataset in processed for p in dataset]
     print(f"Force z mean: {np.mean(fz)}, std: {np.std(fz)}")

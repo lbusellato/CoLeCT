@@ -1,4 +1,5 @@
 import copy
+import joblib
 import logging
 import matplotlib.pyplot as plt
 import numpy as np
@@ -6,10 +7,8 @@ import time
 
 from os.path import dirname, abspath, join
 from colect.dataset import load_datasets, as_array
-from colect.datatypes import Quaternion
 from colect.mixture import GaussianMixtureModel
 from colect.kmp import KMP
-from colect.utils import linear_traj
 
 # Set up logging
 logging.basicConfig(
@@ -26,7 +25,7 @@ subsample = 10
 def main():
 
     # Load the demonstrations
-    datasets = load_datasets("demonstrations/experiment2")
+    datasets = load_datasets("demonstrations/experiment1")
     datasets = datasets[:5]
     for i, dataset in enumerate(datasets):
         datasets[i] = dataset[::subsample]
@@ -41,6 +40,8 @@ def main():
     dataset_arrs = [as_array(dataset) for dataset in datasets]
     poses = np.stack((dataset_arrs))
     x = np.mean(poses, axis=0)[:, [2,3,4,9,10,11]].T
+    np.save(join(ROOT, "trained_models", "experiment1_qa"), datasets[0][0].rot)
+    np.save(join(ROOT, "trained_models", "experiment1_traj"), x)
     
     # Prepare data for GMM/GMR
     X_force = extract_input_data(datasets)
@@ -54,7 +55,7 @@ def main():
     kmp = KMP(l=5e-3, alpha=2e3, sigma_f=750, time_driven_kernel=False)
     kmp.fit(x, mu_force, sigma_force)
 
-    np.save(join(ROOT, "trained_models", "experiment1_kmp.py"), kmp)
+    joblib.dump(kmp, join(ROOT, "trained_models", "experiment1_kmp.mdl"))
     
     mu_force_kmp, sigma_force_kmp = kmp.predict(x, compute_KL=True)
     print(f"KL Divergence: {kmp.kl_divergence}")
@@ -67,7 +68,7 @@ def main():
     elapsed = np.array(elapsed)
     print(f"Avg prediction time: {round(np.mean(elapsed),4)}±{round(np.std(elapsed),4)} s")
 
-    t_gmr = dt * np.arange(1,N+1)
+    t_gmr = 20.0/N * np.arange(1,N+1)
     
     # Plot KMP vs GMR
     fig_vs, ax = plt.subplots(3, 3, figsize=(16, 8))
@@ -144,7 +145,7 @@ def plot_demo(
     """
 
     time = [p.time for p in demonstration] 
-    time = 0.001 * np.arange(1, len(time) + 1)
+    #time = 0.001 * np.arange(1, len(time) + 1)
     # Recover data
     x = [p.x for p in demonstration]
     y = [p.y for p in demonstration]
