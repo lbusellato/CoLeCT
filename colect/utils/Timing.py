@@ -24,7 +24,7 @@ class Timing():
             response = client.request(NTP_SERVER, version=3)
             return response.tx_time
 
-        curr_time = time.perf_counter()
+        curr_time = time.time()
         increment = curr_time - self.prev_time
         self.prev_time = curr_time
         self.time += increment
