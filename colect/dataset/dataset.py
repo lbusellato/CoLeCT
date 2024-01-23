@@ -88,7 +88,7 @@ def trim_datasets(datasets_path: str = '') -> None:
         i = np.where(points != 0)[0][0]
         j = dataset.shape[0] - np.where(np.array(list(reversed(points))) != 0)[0][0]
         trimmed_dataset = dataset[i:j]
-        np.save(join(ROOT, datasets_path, file), trimmed_dataset)
+        np.save(join(datasets_path, file), trimmed_dataset)
 
 def as_array(dataset):
     return np.vstack([point.as_array() for point in dataset])
@@ -247,13 +247,16 @@ def align_datasets(datasets_path: str = ''):
     files.sort()
     datasets = [np.load(join(datasets_path, file), allow_pickle=True) for file in files]
     np.save(join(ROOT, datasets_path, f'dataset00.npy'), datasets[0])
-    reference = as_array(datasets[0])[:, 2:9]
+    reference_time = as_array(datasets[0])[:, 1]
+    reference = as_array(datasets[0])[:, 2:5]
     for i, dataset in enumerate(datasets):
         if i > 0:
-            cost_matrix, _ = soft_dtw_alignment(as_array(dataset)[:, 2:9], reference, gamma=2.5)
-            for j, point in enumerate(dataset):
-                point.timestamp = (j + 1) * 0.1
-            np.save(join(ROOT, datasets_path, f'dataset{i:02d}.npy'), dataset[compute_alignment_path(cost_matrix)])
+            cost_matrix, _ = soft_dtw_alignment(as_array(dataset)[:, 2:5], reference, gamma=2.5)
+            alignment = compute_alignment_path(cost_matrix)
+            new_dataset = dataset[alignment]
+            for j, point in enumerate(new_dataset):
+                point.time = reference_time[j]
+            np.save(join(ROOT, datasets_path, f'dataset{i:02d}.npy'), new_dataset)
 
 def load_datasets(datasets_path: str='') -> np.ndarray:
     """Load all datasets in the given folder.
@@ -304,33 +307,29 @@ def check_quat_signs(datasets_path: str=''):
                 rot[2] *= signs[2] * np.sign(rot[2])
                 rot[3] *= signs[3] * np.sign(rot[3])
                 p.rot = rot
-            np.save(join(ROOT, datasets_path, file), dataset)
+            np.save(join(datasets_path, file), dataset)
 
 def z_to_delta_z(datasets_path: str='', z0: float = 0.05):
     datasets_path = join(ROOT, datasets_path)
     files = [f for f in listdir(datasets_path) if f.endswith('.npy')]
     files.sort()
 
-    for i, file in enumerate(files):
+    for file in files:
         dataset = np.load(join(datasets_path, file), allow_pickle=True)
-        # Loop over the rest of the demonstrations and adjust the signs
-        for p in dataset:
-            z = p.z
-            new_z = z - z0
-            p.z = new_z
-        np.save(join(ROOT, datasets_path, file), dataset)
+        dataset = as_array(dataset)
+        dataset[:, 4] -= z0
+        np.save(join(datasets_path, file), from_array(dataset))
 
 def flip_fz(datasets_path: str=''):
     datasets_path = join(ROOT, datasets_path)
     files = [f for f in listdir(datasets_path) if f.endswith('.npy')]
     files.sort()
 
-    for i, file in enumerate(files):
+    for file in files:
         dataset = np.load(join(datasets_path, file), allow_pickle=True)
-        # Loop over the rest of the demonstrations and adjust the signs
-        for p in dataset:
-            p.fz = -p.fz
-        np.save(join(ROOT, datasets_path, file), dataset)
+        dataset = as_array(dataset)
+        dataset[:, 14] *= -1
+        np.save(join(datasets_path, file), from_array(dataset))
 
 def align_y(datasets_path: str=''):
     datasets_path = join(ROOT, datasets_path)
@@ -343,5 +342,20 @@ def align_y(datasets_path: str=''):
         y_mean = np.mean(y)
         for p in dataset:
             p.y -= y_mean
-        np.save(join(ROOT, datasets_path, file), dataset)
+        np.save(join(datasets_path, file), dataset)
 
+def load_reproduction(path: str='') -> np.ndarray:
+    """Load all reproductions in the given folder.
+
+    Parameters
+    ----------
+    datasets_path : str, default = ''
+        The path to the reproductions, relative to ROOT.
+
+    Returns
+    -------
+    np.ndarray
+    """
+    path = join(ROOT, path)
+    files = [f for f in listdir(path) if f.endswith('.csv')]
+    return [np.genfromtxt(join(path, f), delimiter=" ")[1:, :] for f in files]

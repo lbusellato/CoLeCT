@@ -10,27 +10,15 @@ ROOT = dirname(dirname(abspath(__file__)))
 actual_data_head = ['actual_TCP_pose_0', 
                     'actual_TCP_pose_1', 
                     'actual_TCP_pose_2', 
-                    'actual_TCP_pose_3', 
-                    'actual_TCP_pose_4', 
-                    'actual_TCP_pose_5',
                     'actual_TCP_force_0', 
                     'actual_TCP_force_1', 
-                    'actual_TCP_force_2', 
-                    'actual_TCP_force_3', 
-                    'actual_TCP_force_4', 
-                    'actual_TCP_force_5']
+                    'actual_TCP_force_2',]
 target_data_head = ['kmp_target_TCP_pose_0', 
                     'kmp_target_TCP_pose_1', 
                     'kmp_target_TCP_pose_2', 
-                    'kmp_target_TCP_pose_3', 
-                    'kmp_target_TCP_pose_4', 
-                    'kmp_target_TCP_pose_5',
                     'target_TCP_force_0', 
                     'target_TCP_force_1', 
-                    'target_TCP_force_2', 
-                    'target_TCP_force_3', 
-                    'target_TCP_force_4', 
-                    'target_TCP_force_5']
+                    'target_TCP_force_2',]
 actual_data = []
 target_data = []
 
@@ -53,19 +41,13 @@ with open(join(ROOT, "reproductions", files[-1]), newline='') as csvfile:
 axes = ["x [m]",
         "y [m]",
         "z [m]",
-        "$R_x$ [rad]",
-        "$R_y$ [rad]",
-        "$R_z$ [rad]",
         "$F_x$ [N]",
         "$F_y$ [N]",
         "$F_z$ [N]",
-        "$M_x$ [N]",
-        "$M_y$ [N]",
-        "$M_z$ [N]",
         ]
 
 rows = 2
-cols = 6
+cols = 3
 fig, ax = plt.subplots(rows, cols, figsize=(20,6))
 for i in range(rows):
     for j in range(cols):

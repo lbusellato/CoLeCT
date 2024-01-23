@@ -13,6 +13,7 @@ from colect.datatypes import Quaternion
 from colect.robot import URRobot, DataRecording
 from colect.utils.math import *
 from colect.utils.Timing import Timing
+from colect.utils import linear_traj
 from colect.controller.AdmittanceController import AdmittanceController
 
 _logger = logging.getLogger('colect')
@@ -36,7 +37,7 @@ def main():
 
     setup_logging(logging.INFO)
 
-    frequency = 100.0  # Hz
+    frequency = 500.0  # Hz
     dt = 1 / frequency
 
     _logger.info("Initializing robot...")
@@ -48,9 +49,13 @@ def main():
     kmp = joblib.load(join(ROOT, "trained_models", "experiment2_kmp.mdl"))
     kmp.verbose = False
 
-    traj = np.load(join(ROOT, "trained_models", "experiment2_traj.npy"))
-    kmp_traj = copy.deepcopy(traj)
+    rot_vector = np.array([3.14, 0.0, 0.0])
+    quat = Quaternion.from_rotation_vector(rot_vector)
+    start_pose = np.array([-0.365, 0.290, 0.05,quat[1],quat[2],quat[3],quat[0]])
+    end_pose = np.array([-0.465, 0.290, 0.05,quat[1],quat[2],quat[3],quat[0]])
     qa = np.load(join(ROOT, "trained_models", "experiment2_qa.npy"), allow_pickle=True).item()
+    traj = linear_traj(start_pose, end_pose, n_points=200, qa=qa).T
+    kmp_force_target, _ = kmp.predict(traj)
     rotvecs = np.array([(Quaternion.exp(traj[3:,i])*qa).as_rotation_vector() for i in range(traj.shape[1])]).T
     traj[3:, :] = rotvecs
     traj_i = 0
@@ -91,8 +96,8 @@ def main():
     #adm_controller.D = np.diag([500, 500, 100]) 
     #adm_controller.K = np.diag([5*54, 5*54, 0.0])
     adm_controller.M = np.diag([2.5, 2.5, 2.5])
-    adm_controller.D = np.diag([375, 375, 350]) 
-    adm_controller.K = np.diag([10, 10, 10])
+    adm_controller.D = np.diag([500, 500, 125]) 
+    adm_controller.K = np.diag([5*54, 5*54, 0])
 
     adm_controller.Mo = np.diag([0.25, 0.25, 0.25])
     adm_controller.Do = np.diag([150.0, 150.0, 100.0])
@@ -143,8 +148,7 @@ def main():
             mu_base = ur_robot.ft[3:6]
 
             x_desired = traj[:3, traj_i]
-            f_target_kmp, _ = kmp.predict(kmp_traj[:, traj_i])
-            f_target = f_target_kmp.flatten()
+            f_target = np.zeros(3)#kmp_force_target[:, traj_i]
 
             # The input position and orientation is given as tip in base
             adm_controller.pos_input = T_base_tcp_pos

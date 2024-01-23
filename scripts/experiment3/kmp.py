@@ -3,6 +3,7 @@ import logging
 import matplotlib.pyplot as plt
 import numpy as np
 import time
+import joblib
 
 from matplotlib.patches import Ellipse
 from os.path import dirname, abspath, join
@@ -18,17 +19,16 @@ logging.basicConfig(
     datefmt="%Y-%m-%d,%H:%M:%S",
 )
 
-ROOT = dirname(dirname(abspath(__file__)))
+ROOT = dirname(dirname(dirname(abspath(__file__))))
 
 # One every 'subsample' data points will be kept for each demonstration
-subsample = 10
+subsample = 25
 
 
 def main():
-    """Showcase on how to set up and use GMM/KMP."""
 
     # Load the demonstrations
-    datasets = load_datasets("demonstrations/three_vases")
+    datasets = load_datasets("demonstrations/experiment3/training")
     
     for i, dataset in enumerate(datasets):
         datasets[i] = dataset[::subsample]
@@ -47,7 +47,7 @@ def main():
     demo_duration = dt * (N + 1)  # Duration of each demonstration
 
     # Use the average pose as input for GMR prediction
-    x_gmr = np.array([[p.z for p in dataset] for dataset in datasets]).flatten().reshape(-1,1).T
+    x_gmr = np.array([[p.pose_eucl for p in dataset] for dataset in datasets]).flatten().reshape(-1,1).T
     #x_gmr = np.mean(zs, axis=0).reshape(-1,1).T
     
     # Prepare data for GMM/GMR
@@ -55,10 +55,10 @@ def main():
 
     qa = datasets[0][0].rot
     quat = datasets[0][0].rot
-    start_pose = np.array([-1.45, 0., -0.01,quat[0],quat[1],quat[2],quat[3]])
-    end_pose = np.array([-1.35, 0., -0.01,quat[0],quat[1],quat[2],quat[3]])
+    start_pose = np.array([-1.45, 0., -0.001,quat[0],quat[1],quat[2],quat[3]])
+    end_pose = np.array([-1.35, 0., -0.001,quat[0],quat[1],quat[2],quat[3]])
     x_kmp = linear_traj(start_pose, end_pose, n_points=N, qa=qa).T
-    x_kmp = x_kmp[2,:]
+    np.save(join(ROOT, "trained_models", "experiment3_qa"), qa)
 
     # GMM/GMR on the force
     gmm = GaussianMixtureModel(n_components=5, n_demos=H)
@@ -83,15 +83,16 @@ def main():
             z_ = float(z) if z != '' else z_
             ax[0].clear()
             ax[1].clear()
-            start_pose = np.array([-1.45, 0., -z_,quat[0],quat[1],quat[2],quat[3]])
-            end_pose = np.array([-1.35, 0., -z_,quat[0],quat[1],quat[2],quat[3]])
+            start_pose = np.array([-1.45, 0., 0.0,quat[0],quat[1],quat[2],quat[3]])
+            end_pose = np.array([-1.35, 0., -0.01,quat[0],quat[1],quat[2],quat[3]])
             x_kmp = linear_traj(start_pose, end_pose, n_points=N, qa=qa).T
             x_kmp = x_kmp[2,:]
             # KMP on the force
             kmp = KMP(l=l_, alpha=alpha_, sigma_f=sigma_f_, verbose=True, time_driven_kernel=False)
             kmp.fit(x_gmr, mu_force, sigma_force)
+            joblib.dump(kmp, join(ROOT, "trained_models", "experiment3_kmp.mdl"))
 
-            #np.save(join(ROOT, "trained_models", "top_vase_kmp.py"), kmp)
+            np.save(join(ROOT, "trained_models", "experiment3_traj.npy"), x_kmp)
 
             mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp.reshape(-1,1).T)
 
@@ -114,7 +115,7 @@ def main():
             ax[1].plot(t_gmr, mu_force_kmp[0, :],color="green")
             ax[1].fill_between(x=t_gmr, y1=mu_force_kmp[0, :]+np.sqrt(sigma_force_kmp[0, 0, :]), y2=mu_force_kmp[0, :]-np.sqrt(sigma_force_kmp[0, 0, :]),color="green",alpha=0.35)        
                 
-            fig_vs.suptitle("Three vase sliding task - GMR vs KMP")
+            fig_vs.suptitle("Experiment 3")
             fig_vs.tight_layout()
 
             plt.show(block=False)

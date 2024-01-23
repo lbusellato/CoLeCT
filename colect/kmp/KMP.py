@@ -95,19 +95,24 @@ class KMP:
         sigma : np.ndarray of shape (n_output_features,n_output_features,n_samples)
             Array of covariance matrices
         """
-        for j in range(len(s)):
+        # If a single point is queried, make sure it is in the proper shape
+        if s.shape == (s.size,):
+            s = s.reshape((s.size, 1))
+            xi = xi.reshape((xi.size, 1))
+            sigma = sigma.reshape((sigma.shape[0], sigma.shape[1], 1))
+        for j in range(s.shape[1]):
             # Loop over the reference database to find any conflicts
             min_dist = np.inf
             for i in range(self.N):
-                dist = np.linalg.norm(self.s[:,i]-s[j])
+                dist = np.linalg.norm(self.s[:,i]-s[:,j])
                 if  dist < min_dist:
                     min_dist = dist
                     id = i
             if min_dist < self.tol:
                 # Replace the conflicting point
-                self.s[:,id] = s[j]
-                self.xi[:,id] = xi[j]
-                self.sigma[:,:,id] = sigma[j]
+                self.s[:,id] = s[:, j]
+                self.xi[:,id] = xi[:, j]
+                self.sigma[:,:,id] = sigma[:, :, j]
             else:
                 # Add the new point to the database
                 self.s = np.concatenate((self.s, np.array(s[j]).reshape(1,-1)),axis=1)

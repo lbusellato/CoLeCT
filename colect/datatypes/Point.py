@@ -44,6 +44,26 @@ class Point():
         return self.rot.as_array()
     
     @property
+    def pose(self) -> np.ndarray:
+        """
+        Get the value of pose.
+    
+        Returns:
+            np.ndarray: The value of pose.
+        """
+        return np.array([self.x, self.y, self.z, self.rot.as_array()[0], self.rot.as_array()[1], self.rot.as_array()[2], self.rot.as_array()[3]])
+    
+    @property
+    def pose_eucl(self) -> np.ndarray:
+        """
+        Get the value of pose, with euclidean orientation.
+    
+        Returns:
+            np.ndarray: The value of pose_eucl.
+        """
+        return np.array([self.x, self.y, self.z, self.rot_eucl[0], self.rot_eucl[1], self.rot_eucl[2]])
+    
+    @property
     def force(self) -> np.ndarray:
         """
         Get the value of force.

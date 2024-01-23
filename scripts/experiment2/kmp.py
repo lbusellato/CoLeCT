@@ -53,6 +53,7 @@ def main():
     start_pose = np.array([-0.365, 0.290, 0.05,quat[1],quat[2],quat[3],quat[0]])
     end_pose = np.array([-0.465, 0.290, 0.05,quat[1],quat[2],quat[3],quat[0]])
     x_kmp = linear_traj(start_pose, end_pose, n_points=N, qa=qa).T
+    x_kmp2 = linear_traj(start_pose, end_pose, n_points=2*N, qa=qa).T
 
     np.save(join(ROOT, "trained_models", "experiment2_traj.npy"), x_kmp)
     np.save(join(ROOT, "trained_models", "experiment2_qa.npy"), qa)
@@ -68,8 +69,8 @@ def main():
 
     joblib.dump(kmp, join(ROOT, "trained_models", "experiment2_kmp.mdl"))
 
-    mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp, compute_KL=True)
-    print(f"KL Divergence: {kmp.kl_divergence}")
+    mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp2)#, compute_KL=True)
+    #print(f"KL Divergence: {kmp.kl_divergence}")
     
     elapsed = []
     for i in range(x_kmp.shape[1]):
@@ -79,17 +80,18 @@ def main():
     elapsed = np.array(elapsed)
     print(f"Avg prediction time: {round(np.mean(elapsed),4)}±{round(np.std(elapsed),4)} s")
 
-    t_gmr = dt * np.arange(1,N+1)
+    t_gmr = dt * np.arange(1,x_gmr.shape[1] + 1)
+    t_kmp = (x_gmr.shape[1] / x_kmp2.shape[1]) * dt * np.arange(1,x_kmp2.shape[1] + 1)
     # Plot KMP vs GMR
     fig_vs, ax = plt.subplots(3, 3, figsize=(16, 8))
     for dataset in datasets:
         plot_demo(ax, dataset, demo_duration)
         
     for i in range(3):
-        ax[0,i].plot(t_gmr, x_kmp[i,:], color="green")
-        ax[1,i].plot(t_gmr, x_kmp[i + 3,:], color="green")
+        ax[0,i].plot(t_kmp, x_kmp2[i,:], color="green")
+        ax[1,i].plot(t_kmp, x_kmp2[i + 3,:], color="green")
         ax[2,i].plot(t_gmr, mu_force[i, :],color="red")
-        ax[2,i].plot(t_gmr, mu_force_kmp[i, :],color="green")
+        ax[2,i].plot(t_kmp, mu_force_kmp[i, :],color="green")
         
     fig_vs.suptitle("Experiment 2")
     fig_vs.tight_layout()
