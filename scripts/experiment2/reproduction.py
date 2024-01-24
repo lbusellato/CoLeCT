@@ -51,8 +51,8 @@ def main():
 
     rot_vector = np.array([3.14, 0.0, 0.0])
     quat = Quaternion.from_rotation_vector(rot_vector)
-    start_pose = np.array([-0.365, 0.290, 0.05,quat[1],quat[2],quat[3],quat[0]])
-    end_pose = np.array([-0.465, 0.290, 0.05,quat[1],quat[2],quat[3],quat[0]])
+    start_pose = np.array([-0.365, 0.290, 0.02,quat[1],quat[2],quat[3],quat[0]])
+    end_pose = np.array([-0.465, 0.290, 0.02,quat[1],quat[2],quat[3],quat[0]])
     qa = np.load(join(ROOT, "trained_models", "experiment2_qa.npy"), allow_pickle=True).item()
     traj = linear_traj(start_pose, end_pose, n_points=200, qa=qa).T
     kmp_force_target, _ = kmp.predict(traj)
@@ -73,7 +73,7 @@ def main():
     time.sleep(0.5)
     ur_robot.moveJ_IK(START_POSE)
     time.sleep(0.5)
-    #input("Press any key to start")
+    input("Press any key to begin")
 
     # receive initial robot data
     ur_robot.receive_data()
@@ -96,7 +96,7 @@ def main():
     #adm_controller.D = np.diag([500, 500, 100]) 
     #adm_controller.K = np.diag([5*54, 5*54, 0.0])
     adm_controller.M = np.diag([2.5, 2.5, 2.5])
-    adm_controller.D = np.diag([500, 500, 125]) 
+    adm_controller.D = np.diag([500, 500, 200]) 
     adm_controller.K = np.diag([5*54, 5*54, 0])
 
     adm_controller.Mo = np.diag([0.25, 0.25, 0.25])
@@ -135,6 +135,11 @@ def main():
 
             ur_robot.receive_data()
 
+            if np.any(np.abs(ur_robot.ft) > 20):
+                ur_robot.stop_control()
+                print("F too high! Stopping...")
+                done = True
+
             # Get current robot pose
             T_base_tcp = get_robot_pose_as_transform(ur_robot)
 
@@ -148,7 +153,8 @@ def main():
             mu_base = ur_robot.ft[3:6]
 
             x_desired = traj[:3, traj_i]
-            f_target = np.zeros(3)#kmp_force_target[:, traj_i]
+            f_target = np.array([0.0, 0.0, kmp_force_target[2, traj_i]])
+
 
             # The input position and orientation is given as tip in base
             adm_controller.pos_input = T_base_tcp_pos

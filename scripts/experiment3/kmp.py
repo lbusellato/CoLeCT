@@ -70,7 +70,7 @@ def main():
     l_ = 0.05
     alpha_ = 5e3
     sigma_f_ = 1e3
-    z_ = 0.01
+    z_ = 0.008
     try:
         while True:
             l = input("l: ")
@@ -83,8 +83,8 @@ def main():
             z_ = float(z) if z != '' else z_
             ax[0].clear()
             ax[1].clear()
-            start_pose = np.array([-1.45, 0., 0.0,quat[0],quat[1],quat[2],quat[3]])
-            end_pose = np.array([-1.35, 0., -0.01,quat[0],quat[1],quat[2],quat[3]])
+            start_pose = np.array([-0.365, 0., -z_,quat[0],quat[1],quat[2],quat[3]])
+            end_pose = np.array([-0.465, 0., -z_,quat[0],quat[1],quat[2],quat[3]])
             x_kmp = linear_traj(start_pose, end_pose, n_points=N, qa=qa).T
             x_kmp = x_kmp[2,:]
             # KMP on the force

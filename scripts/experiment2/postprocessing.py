@@ -49,7 +49,7 @@ def plot_demo(ax, demonstration, linewidth=1.0, color='blue', label=""):
 def main():
     # Showcase the dataset postprocessing operations
     # Process the .csv files into .npy files
-    path = 'demonstrations/experiment2'
+    path = 'demonstrations/experiment2/phantom2'
     create_dataset(path, 20)
     # Trim any leading or trailing force-only samples
     trim_datasets(path)
@@ -57,13 +57,15 @@ def main():
     interpolate_datasets(path)
     # Transform the coordinates to the base robot frame
     to_base_frame(path)
+    # Align demos wrt Fz
+    align_datasets(path)
     # Load the processed datasets
     processed = load_datasets(path)
     # Plot everything
     plt.ion()
     fig, ax = plt.subplots(4, 4, figsize=(16, 8))
     for i, dataset in enumerate(processed):
-        plot_demo(ax, dataset, linewidth=0.75)
+        plot_demo(ax, dataset, label=i)
     fig.suptitle('Dataset postprocessing')
     fig.tight_layout()
     fig.legend()

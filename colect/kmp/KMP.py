@@ -183,8 +183,9 @@ class KMP:
         self.O, self.N = self.xi.shape
         k = np.zeros((self.N * self.O, self.N * self.O))
         # Construct the estimator
-        for i in range(self.N):
-            for j in range(self.N):
+        N = self.s.shape[1]
+        for i in range(N):
+            for j in range(N):
                 kernel = self.__kernel_matrix(self.s[:, i], self.s[:, j])
                 k[i * self.O : (i + 1) * self.O, j * self.O : (j + 1) * self.O] = kernel
                 if i == j:
@@ -192,7 +193,7 @@ class KMP:
                     k[j * self.O : (j + 1) * self.O, i * self.O : (i + 1) * self.O] += (
                         self.l * self.sigma[:, :, i]
                     )
-        self._estimator = inv(k)
+        self._estimator = np.linalg.pinv(k)
         # In the original MATLAB code Y was computed inside the predict loop, however that's really
         # inefficient. I do the computation here, to speed up the prediction step.
         self.Y = self.xi.T.flatten()

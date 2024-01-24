@@ -50,10 +50,10 @@ def main():
     qa = datasets[0][0].rot
     rot_vector = np.array([3.14, 0.0, 0.0])
     quat = Quaternion.from_rotation_vector(rot_vector)
-    start_pose = np.array([-0.365, 0.290, 0.05,quat[1],quat[2],quat[3],quat[0]])
-    end_pose = np.array([-0.465, 0.290, 0.05,quat[1],quat[2],quat[3],quat[0]])
+    start_pose = np.array([-0.365, 0.290, 0.02,quat[1],quat[2],quat[3],quat[0]])
+    end_pose = np.array([-0.465, 0.290, 0.02,quat[1],quat[2],quat[3],quat[0]])
     x_kmp = linear_traj(start_pose, end_pose, n_points=N, qa=qa).T
-    x_kmp2 = linear_traj(start_pose, end_pose, n_points=2*N, qa=qa).T
+    x_kmp2 = linear_traj(start_pose, end_pose, n_points=200, qa=qa).T
 
     np.save(join(ROOT, "trained_models", "experiment2_traj.npy"), x_kmp)
     np.save(join(ROOT, "trained_models", "experiment2_qa.npy"), qa)
@@ -80,18 +80,19 @@ def main():
     elapsed = np.array(elapsed)
     print(f"Avg prediction time: {round(np.mean(elapsed),4)}±{round(np.std(elapsed),4)} s")
 
-    t_gmr = dt * np.arange(1,x_gmr.shape[1] + 1)
-    t_kmp = (x_gmr.shape[1] / x_kmp2.shape[1]) * dt * np.arange(1,x_kmp2.shape[1] + 1)
+    duration = 7.5
+    t_gmr = (duration / x_gmr.shape[1]) * np.arange(0,x_gmr.shape[1])
+    t_kmp = (duration / x_kmp2.shape[1]) * np.arange(0,x_kmp2.shape[1])
     # Plot KMP vs GMR
-    fig_vs, ax = plt.subplots(3, 3, figsize=(16, 8))
+    fig_vs, ax = plt.subplots(2, 3, figsize=(16, 8))
     for dataset in datasets:
         plot_demo(ax, dataset, demo_duration)
         
     for i in range(3):
         ax[0,i].plot(t_kmp, x_kmp2[i,:], color="green")
-        ax[1,i].plot(t_kmp, x_kmp2[i + 3,:], color="green")
-        ax[2,i].plot(t_gmr, mu_force[i, :],color="red")
-        ax[2,i].plot(t_kmp, mu_force_kmp[i, :],color="green")
+        ax[0,i].plot(t_gmr, x_gmr[i,:], color="red")
+        ax[1,i].plot(t_gmr, mu_force[i, :],color="red")
+        ax[1,i].plot(t_kmp, mu_force_kmp[i, :],color="green")
         
     fig_vs.suptitle("Experiment 2")
     fig_vs.tight_layout()
@@ -157,72 +158,22 @@ def plot_demo(
     """
 
     time = [p.time for p in demonstration] 
-    time = 0.001 * np.arange(1, len(time) + 1)
+    time -= time[0]
     # Recover data
     x = [p.x for p in demonstration]
     y = [p.y for p in demonstration]
     z = [p.z for p in demonstration]
-    qx = [p.rot_eucl[0] for p in demonstration]
-    qy = [p.rot_eucl[1] for p in demonstration]
-    qz = [p.rot_eucl[2] for p in demonstration]
     fx = [p.fx for p in demonstration]
     fy = [p.fy for p in demonstration]
     fz = [p.fz for p in demonstration]
-    data = [x, y, z, qx, qy, qz, fx, fy, fz]
+    data = [x, y, z, fx, fy, fz]
     y_labels = [
         "x [m]",
         "y [m]",
         "z [m]",
-        "$q_{ex}$",
-        "$q_{ey}$",
-        "$q_{ez}$",
         "$F_x$ [N]",
         "$F_y$ [N]",
         "$F_z$ [N]",
-    ]
-    # Plot everything
-    for i in range(3):
-        for j in range(3):
-            ax[i, j].plot(time, data[i * 3 + j], linewidth=0.6, color="grey")
-            ax[i, j].set_ylabel(y_labels[i * 3 + j])
-            ax[i, j].grid(True)
-            if i == 2:
-                ax[i, j].set_xlabel("Time [s]")
-
-# ugly ugly ugly ugly ugly
-def plot_demo_no_force(
-    ax: plt.Axes, demonstration: np.ndarray, duration: float, dt: float = 0.1
-):
-    """Plot the position, orientation (as Euclidean projection of quaternions) and force data contained in a demonstration.
-
-    Parameters
-    ----------
-    ax : plt.Axes
-        The plot axes on which to plot the data.
-    demonstration : np.ndarray
-        The array containing the demonstration data.
-    duration : float
-        Total trajectory duration, used to correctly display time.
-    duration : float, default = 0.1
-        Trajectory time step, used to correctly display time.
-    """
-
-    time = [p.time for p in demonstration] #np.arange(dt, duration - dt, dt)
-    # Recover data
-    x = [p.x for p in demonstration]
-    y = [p.y for p in demonstration]
-    z = [p.z for p in demonstration]
-    qx = [p.rot_eucl[0] for p in demonstration]
-    qy = [p.rot_eucl[1] for p in demonstration]
-    qz = [p.rot_eucl[2] for p in demonstration]
-    data = [x, y, z, qx, qy, qz]
-    y_labels = [
-        "x [m]",
-        "y [m]",
-        "z [m]",
-        "$q_{ex}$",
-        "$q_{ey}$",
-        "$q_{ez}$",
     ]
     # Plot everything
     for i in range(2):
@@ -230,7 +181,7 @@ def plot_demo_no_force(
             ax[i, j].plot(time, data[i * 3 + j], linewidth=0.6, color="grey")
             ax[i, j].set_ylabel(y_labels[i * 3 + j])
             ax[i, j].grid(True)
-            if i == 1:
+            if i == 2:
                 ax[i, j].set_xlabel("Time [s]")
 
 

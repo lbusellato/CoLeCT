@@ -5,6 +5,7 @@ import numpy as np
 import joblib
 import time
 
+from itertools import product
 from os.path import dirname, abspath, join
 from colect.dataset import load_datasets, as_array, from_array
 from colect.datatypes import Quaternion
@@ -28,135 +29,80 @@ def main():
 
     # Load the demonstrations
     datasets = load_datasets("demonstrations/experiment4")
-    datasets = datasets[:5]
+    datasets = datasets[:4]
     for i, dataset in enumerate(datasets):
         datasets[i] = dataset[::subsample]
 
     H = len(datasets)  # Number of demonstrations
     N = len(datasets[0])  # Length of each demonstration
 
-
     dt = 0.001
     demo_duration = dt * (N + 1)  # Duration of each demonstration
 
-    # Use the average pose as input for GMR prediction
+
+    # Input for GMR
     dataset_arrs = [as_array(dataset) for dataset in datasets]
-    poses = np.stack((dataset_arrs))
-    x_gmr = np.mean(poses, axis=0)[:, [2,3,4]].T
-    
-    # Prepare data for GMM/GMR
+    poses = np.stack((dataset_arrs), axis=2)
+    x_gmr = np.mean(poses, axis=2)[:, [2,3,4]].T
+
+    # Local frames
+    A1 = np.eye(6)
+    b1 = np.array([*x_gmr[:,0],0,0,0])#np.zeros(6)
+    A2 = np.eye(6)
+    b2 = np.array([*x_gmr[:,-1],0,0,0])#np.zeros(6)
+    An = [A1, A2]
+    bn = [b1, b2]
+
+    # Demonstrations
     X_force = extract_input_data(datasets)
 
-    # Generate the trajectory
-    start_pose = np.array([-0.365, 0.290, 0.05])
-    end_pose = np.array([-0.415, 0.290, 0.05])
-    x_kmp_test = linear_traj(start_pose, end_pose, n_points=N)[:, :3].T
-    x_kmp_test2 = linear_traj(start_pose, end_pose, n_points=N//2)[:, :3].T
-    start_pose2 = x_kmp_test2[:,-1]#np.array([-0.465, 0.290, 0.05])
-    end_pose2 = np.array([-0.465, 0.290, 0.05])
-    x_kmp_test3 = linear_traj(start_pose2, end_pose2, n_points=N//2)[:, :3].T
+    # New trajectory for KMP
+    start_pose = np.array([-0.465, 0.290, 0.05])
+    end_pose = np.array([-0.365, 0.290, 0.05])
+    x_kmp = linear_traj(start_pose, end_pose, n_points=N)[:, :3].T
 
-    np.save(join(ROOT, "trained_models", "experiment4_traj.npy"), x_kmp_test)
-
-    # An are the rotation matrices for the start and end frame
-    An = np.array([np.linalg.inv(np.eye(6)), np.linalg.inv(np.eye(6))])
-    # bn are the translation vectors for the start and end frame
-    bn = np.array([[*start_pose, 0, 0, 0], [*end_pose, 0, 0, 0]])
-    X_force = extract_input_data(datasets)
-    # X_p are the local demonstration databases
-    X_p = [np.array([A @ (row - b) for row in zip(*X_force.T)]) for A, b in zip(An, bn)]
-    
-    # Project the reference trajectory to the local dbs
+    # Project demonstrations and GMR input into local frames
+    X_force_p = [np.array([A @ (row - b) for row in zip(*X_force.T)]) for A, b in zip(An, bn)]
     x_gmr_p = [np.array([A[:3, :3] @ (row - b[:3]) for row in zip(*x_gmr)]).T for A, b in zip(An, bn)]
-    
-    # Extract the local reference databases
+
+    # Extract local reference databases
     mu_gmr_p = []
     sigma_gmr_p = []
-    for X, x_gmr in zip(X_p, x_gmr_p):
+    for X, x in zip(X_force_p, x_gmr_p):
         gmm = GaussianMixtureModel(n_components=10, n_demos=H)
         gmm.fit(X)
-        mu_force, sigma_force = gmm.predict(x_gmr)
+        mu_force, sigma_force = gmm.predict(x)
         mu_gmr_p.append(mu_force)
         sigma_gmr_p.append(sigma_force)
 
-    # Project the input into the local frames
-    x_kmp_p = [np.array([A[:3, :3] @ (row - b[:3]) for row in zip(*x_kmp_test)]).T for A, b in zip(An, bn)]
-    x_kmp_p2 = [np.array([A[:3, :3] @ (row - b[:3]) for row in zip(*x_kmp_test2)]).T for A, b in zip(An, bn)]
-    x_kmp_p3 = [np.array([A[:3, :3] @ (row - b[:3]) for row in zip(*x_kmp_test3)]).T for A, b in zip(An, bn)]
+    # Project the new input into the local frames
+    x_kmp_p = [np.array([A[:3, :3] @ (row - b[:3]) for row in zip(*x_kmp)]).T for A, b in zip(An, bn)]    
 
-    # Run KMP on both reference databases
-    mu_kmp_p1 = []
-    sigma_kmp_p1 = []
     kmp = KMP(l=1e-5, alpha=1e4, sigma_f=1e5, time_driven_kernel=False)
-    for x_kmp, x_kmp2, mu_gmr, sigma_gmr in zip(x_kmp_p, x_kmp_p2, mu_gmr_p, sigma_gmr_p):
-        kmp.fit(x_kmp, mu_gmr, sigma_gmr)
-        mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp2)
-        mu_kmp_p1.append(mu_force_kmp)
-        sigma_kmp_p1.append(sigma_force_kmp)
-    mu_kmp_p1 = np.array(mu_kmp_p1)
-    sigma_kmp_p1 = np.array(sigma_kmp_p1)
+    mu_kmp_p = []
+    sigma_kmp_p = []
+    for x_train, x_test, mu, sigma in zip(x_kmp_p, x_kmp_p, mu_gmr_p, sigma_gmr_p):
+        kmp.fit(x_train, mu, sigma)
+        mu_kmp, sigma_kmp = kmp.predict(x_test)
+        mu_kmp_p.append(mu_kmp)
+        sigma_kmp_p.append(sigma_kmp)
 
-    # Equation 46 in the paper
-    mu_force_kmp1 = []
-    for i in range(x_kmp_test2.shape[1]):
-        sigma = [np.linalg.inv(sigmas[:, :, i]) for sigmas in sigma_kmp_p1]
-        sigma_sum_inv = np.linalg.inv(np.sum(sigma, axis=0))
-        sigma_times_mu = [np.linalg.inv(sigmas[:, :, i])@mus[:, i] for sigmas, mus in zip(sigma_kmp_p1, mu_kmp_p1)]
-        sigma_times_mu_sum = np.sum(sigma_times_mu, axis=0)
-        mu_force_kmp1.append(sigma_sum_inv @ sigma_times_mu_sum)
-    mu_force_kmp1 = np.array(mu_force_kmp1).T
-
-    # Run KMP on both reference databases
-    mu_kmp_p2 = []
-    sigma_kmp_p2 = []
-    kmp = KMP(l=1e-5, alpha=1e4, sigma_f=1e5, time_driven_kernel=False)
-    for x_kmp, x_kmp2, mu_gmr, sigma_gmr in zip(x_kmp_p, x_kmp_p3, mu_gmr_p, sigma_gmr_p):
-        kmp.fit(x_kmp, mu_gmr, sigma_gmr)
-        mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp2)
-        mu_kmp_p2.append(mu_force_kmp)
-        sigma_kmp_p2.append(sigma_force_kmp)
-    mu_kmp_p2 = np.array(mu_kmp_p2)
-    sigma_kmp_p2 = np.array(sigma_kmp_p2)
-
-    # Equation 46 in the paper
-    mu_force_kmp2 = []
-    for i in range(x_kmp_test3.shape[1]):
-        sigma = [np.linalg.inv(sigmas[:, :, i]) for sigmas in sigma_kmp_p2]
-        sigma_sum_inv = np.linalg.inv(np.sum(sigma, axis=0))
-        sigma_times_mu = [np.linalg.inv(sigmas[:, :, i])@mus[:, i] for sigmas, mus in zip(sigma_kmp_p2, mu_kmp_p2)]
-        sigma_times_mu_sum = np.sum(sigma_times_mu, axis=0)
-        mu_force_kmp2.append(sigma_sum_inv @ sigma_times_mu_sum)
-    mu_force_kmp2 = np.array(mu_force_kmp2).T
-
-    if False:
-        # Set some waypoints
-        wp_width = 10 # How many points before and after the middle to consider
-        var = 1e-8 # Variance to achieve
-        Fz = 0 # Force in z to achieve
-
-        middle_index = x_kmp.shape[1] // 2
-        waypoints = x_kmp[:, middle_index - wp_width : middle_index + wp_width + 1]
-        N_points = waypoints.shape[1]
-        forces = np.tile(np.array([0.0, 0.0, Fz]).reshape(-1,1), (1, N_points))
-        sigmas = np.repeat(var*np.eye(3)[:, :, np.newaxis], N_points, axis=2)
-
-        kmp.set_waypoint(waypoints, forces, sigmas)
+    mu_force = []
+    for i in range(x_kmp.shape[1]):
+        sigma_p_inv = np.array([np.linalg.inv(sigma[:,:,i]) for sigma in sigma_kmp_p])
+        sigma_p_inv = np.linalg.inv(np.sum(sigma_p_inv, axis=0))
+        sigma_p_inv_prod = np.array([np.linalg.inv(sigma[:,:,i])@mu[:,i] for mu, sigma in zip(mu_kmp_p, sigma_kmp_p)])
+        sigma_p_inv_prod = np.sum(sigma_p_inv, axis=0)
+        mu_force.append(sigma_p_inv @ sigma_p_inv_prod)
+    mu_force = np.vstack(mu_force).T
 
     fig_vs, ax = plt.subplots(2, 3, figsize=(16, 8))
     for dataset in datasets:
         plot_demo(ax, dataset, demo_duration)
 
-    t_gmr = dt * np.arange(0,x_gmr.shape[1])
-    t_kmp2 = dt * np.arange(0,x_kmp_test2.shape[1])
-    t_kmp3 = t_kmp2[-1] + dt * np.arange(0,x_kmp_test3.shape[1])
-    t_kmp1 = dt * np.arange(0,mu_force_kmp1.shape[1])
-    t_kmp4 = t_kmp1[-1] + dt * np.arange(0,mu_force_kmp2.shape[1])
+    t_gmr = dt * np.arange(0,mu_force.shape[1])
     for i in range(3):
-        ax[0,i].plot(t_kmp2, x_kmp_test2[i,:], color="green")
-        ax[0,i].plot(t_kmp3, x_kmp_test3[i,:], color="blue")
         ax[1,i].plot(t_gmr, mu_force[i, :],color="red")
-        ax[1,i].plot(t_kmp1, mu_force_kmp1[i, :],color="green")
-        ax[1,i].plot(t_kmp4, mu_force_kmp2[i, :],color="blue")
 
     fig_vs.suptitle("Experiment 4")
     fig_vs.tight_layout()
