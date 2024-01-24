@@ -115,9 +115,9 @@ class KMP:
                 self.sigma[:,:,id] = sigma[:, :, j]
             else:
                 # Add the new point to the database
-                self.s = np.concatenate((self.s, np.array(s[j]).reshape(1,-1)),axis=1)
-                self.xi = np.concatenate((self.xi, xi[j].T),axis=1)
-                self.sigma = np.concatenate((self.sigma, np.expand_dims(sigma[j],2)),axis=2)
+                self.s = np.insert(self.s, self.s.shape[1], s[:,j], axis=1)
+                self.xi = np.insert(self.xi, self.xi.shape[1], xi[:, j].T, axis=1)
+                self.sigma = np.insert(self.sigma, self.sigma.shape[2], np.expand_dims(sigma[:, :, j],2), axis=2)
         # Refit the model with the new data
         self.fit(self.s, self.xi, self.sigma)
 

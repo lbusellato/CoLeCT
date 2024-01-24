@@ -65,7 +65,7 @@ def main():
     plt.ion()
     fig, ax = plt.subplots(4, 4, figsize=(16, 8))
     for i, dataset in enumerate(processed):
-        plot_demo(ax, dataset, label=i)
+        plot_demo(ax, dataset)
     fig.suptitle('Dataset postprocessing')
     fig.tight_layout()
     fig.legend()
@@ -76,8 +76,6 @@ def main():
     flip_fz(path)
     check_quat_signs(path)
     processed = load_datasets(path)
-    fz = [p.fz for dataset in processed for p in dataset]
-    print(f"Force z mean: {np.mean(fz)}, std: {np.std(fz)}")
     fig, ax = plt.subplots(4, 4, figsize=(16, 8))
     for i, dataset in enumerate(processed):
         plot_demo(ax, dataset, linewidth=0.75)

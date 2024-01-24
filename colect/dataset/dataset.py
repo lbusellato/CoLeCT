@@ -125,6 +125,7 @@ def interpolate_datasets(datasets_path: str = ''):
         for i in range(3):
             interp_dataset[missing_indices, i + 2] = np.interp(time_missing, time_known, position_known[:, i])
         # Interpolate the orientation (quaternion) using SLERP
+        a = slerp(time_missing, time_known, orientation_known)
         interp_dataset[missing_indices, 5:9] = slerp(time_missing, time_known, orientation_known)[:missing_indices.shape[0],:]
         if qa is None:
             qa = Quaternion.from_array(orientation_known[0])
@@ -234,31 +235,34 @@ def compute_alignment_path(cost_matrix):
     return [np.argmax(row) for row in cost_matrix.T]
 
 
-def align_datasets(datasets_path: str = ''):
+def align_datasets(datasets_path: str = '', gamma: float=2.5):
     """Align the demonstrations temporally using soft-DTW.
 
     Parameters
     ----------
     datasets_path : str, default = ''
         The path to the datasets, relative to ROOT.
+    gamma : float, default = 2.5
+        Coefficient for soft-DTW.
     """
     datasets_path = join(ROOT, datasets_path)
     files = [f for f in listdir(datasets_path) if f.endswith('.npy')]
     files.sort()
     datasets = [np.load(join(datasets_path, file), allow_pickle=True) for file in files]
-    np.save(join(ROOT, datasets_path, f'dataset00.npy'), datasets[0])
-    reference_time = as_array(datasets[0])[:, 1]
-    reference = as_array(datasets[0])[:, 2:5]
+    np.save(join(ROOT, datasets_path, files[0]), datasets[0])
+    reference = as_array(datasets[0])
+    reference_time = reference[:, 1]
+    reference = reference[:, [1, 14]]
     for i, dataset in enumerate(datasets):
         if i > 0:
-            cost_matrix, _ = soft_dtw_alignment(as_array(dataset)[:, 2:5], reference, gamma=2.5)
+            cost_matrix, _ = soft_dtw_alignment(as_array(dataset)[:, [1, 14]], reference, gamma=gamma)
             alignment = compute_alignment_path(cost_matrix)
             new_dataset = dataset[alignment]
             for j, point in enumerate(new_dataset):
                 point.time = reference_time[j]
             np.save(join(ROOT, datasets_path, f'dataset{i:02d}.npy'), new_dataset)
 
-def load_datasets(datasets_path: str='') -> np.ndarray:
+def load_datasets(datasets_path: str='', index: int=None) -> np.ndarray:
     """Load all datasets in the given folder.
 
     Parameters
@@ -275,17 +279,25 @@ def load_datasets(datasets_path: str='') -> np.ndarray:
     datasets_path = join(ROOT, datasets_path)
     datasets = [f for f in listdir(datasets_path) if f.endswith('.npy')]
     datasets.sort()
-    return [np.load(join(datasets_path, f), allow_pickle=True) for f in datasets]
+    if index is not None:
+        return np.load(join(datasets_path, datasets[index]), allow_pickle=True)
+    else:
+        return [np.load(join(datasets_path, f), allow_pickle=True) for f in datasets]
 
-def clip_datasets(datasets_path: str='', lower_cutoff: float=0.0, upper_cutoff: float=0.0):
+def clip_datasets(datasets_path: str='', lower_cutoff: float=0.0, upper_cutoff: float=0.0, index: int=None, zero_calib: bool=False):
     datasets_path = join(ROOT, datasets_path)
     files = [f for f in listdir(datasets_path) if f.endswith('.npy')]
     files.sort()
     if lower_cutoff != upper_cutoff and lower_cutoff < upper_cutoff:
-        for file in files:
-            dataset = np.load(join(datasets_path, file), allow_pickle=True)
-            new = np.vstack([p for p in dataset if p.time >= lower_cutoff and p.time <= upper_cutoff]).flatten()
-            np.save(join(ROOT, datasets_path, file), new)
+        for i, file in enumerate(files):
+            if index is None or i == index:
+                dataset = np.load(join(datasets_path, file), allow_pickle=True)
+                new = np.vstack([p for p in dataset if p.time >= lower_cutoff and p.time <= upper_cutoff]).flatten()
+                if zero_calib:
+                    new_arr = as_array(new)
+                    new_arr[:, 1] -= new_arr[0, 1]
+                    new = from_array(new_arr)
+                np.save(join(ROOT, datasets_path, file), new)
 
 def check_quat_signs(datasets_path: str=''):
     datasets_path = join(ROOT, datasets_path)
@@ -358,4 +370,5 @@ def load_reproduction(path: str='') -> np.ndarray:
     """
     path = join(ROOT, path)
     files = [f for f in listdir(path) if f.endswith('.csv')]
+    files.sort()
     return [np.genfromtxt(join(path, f), delimiter=" ")[1:, :] for f in files]
