@@ -41,21 +41,25 @@ def main():
     dt = 1 / frequency
 
     _logger.info("Initializing robot...")
-    ur_robot = URRobot(robot_ip, frequency=frequency)
+    #ur_robot = URRobot(robot_ip, frequency=frequency)
 
     timing = Timing()
 
     # Load the trained model and trajectory
-    kmp = joblib.load(join(ROOT, "trained_models", "experiment2_kmp.mdl"))
+    kmp = joblib.load(join(ROOT, "trained_models", "experiment3_kmp.mdl"))
     kmp.verbose = False
+
+    start_pose = np.array([-0.365, 0.290, -0.004])
+    end_pose = np.array([-0.465, 0.290, -0.004])
+    traj = linear_traj(start_pose, end_pose, n_points=200)[:,2].T
+    kmp_force_target, _ = kmp.predict(traj.reshape(-1,1).T)
 
     rot_vector = np.array([3.14, 0.0, 0.0])
     quat = Quaternion.from_rotation_vector(rot_vector)
-    start_pose = np.array([-0.365, 0.290, 0.05,quat[1],quat[2],quat[3],quat[0]])
-    end_pose = np.array([-0.465, 0.290, 0.05,quat[1],quat[2],quat[3],quat[0]])
-    qa = np.load(join(ROOT, "trained_models", "experiment2_qa.npy"), allow_pickle=True).item()
+    start_pose = np.array([-0.365, 0.290, 0.02,quat[1],quat[2],quat[3],quat[0]])
+    end_pose = np.array([-0.465, 0.290, 0.02,quat[1],quat[2],quat[3],quat[0]])
+    qa = np.load(join(ROOT, "trained_models", "experiment3_qa.npy"), allow_pickle=True).item()
     traj = linear_traj(start_pose, end_pose, n_points=200, qa=qa).T
-    kmp_force_target, _ = kmp.predict(traj)
     rotvecs = np.array([(Quaternion.exp(traj[3:,i])*qa).as_rotation_vector() for i in range(traj.shape[1])]).T
     traj[3:, :] = rotvecs
     traj_i = 0

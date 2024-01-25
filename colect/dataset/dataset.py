@@ -125,8 +125,7 @@ def interpolate_datasets(datasets_path: str = ''):
         for i in range(3):
             interp_dataset[missing_indices, i + 2] = np.interp(time_missing, time_known, position_known[:, i])
         # Interpolate the orientation (quaternion) using SLERP
-        a = slerp(time_missing, time_known, orientation_known)
-        interp_dataset[missing_indices, 5:9] = slerp(time_missing, time_known, orientation_known)[:missing_indices.shape[0],:]
+        interp_dataset[missing_indices, 5:9] = slerp(time_missing, time_known, orientation_known)
         if qa is None:
             qa = Quaternion.from_array(orientation_known[0])
         for i in missing_indices:
@@ -177,7 +176,7 @@ def slerp(time_missing : np.ndarray, time_known : np.ndarray, orientation_known 
             # Compute spherical linear interpolation between the quaternions
             theta = np.arccos(dot_product)
             # +2 to consider the initial and final quaternions, but only interpolate inbetween
-            time = np.linspace(0, n + 2)
+            time = np.linspace(0, 1, n + 2)
             for t in time[1:-1]:
                 q_interpolated = (np.sin((1 - t) * theta) / np.sin(theta)) * q1 + (np.sin(t * theta) / np.sin(theta)) * q2
                 out.append(q_interpolated / np.linalg.norm(q_interpolated))

@@ -30,6 +30,7 @@ def main():
     # Load the demonstrations
     datasets = load_datasets("demonstrations/experiment3/training")
     
+
     for i, dataset in enumerate(datasets):
         datasets[i] = dataset[::subsample]
 
@@ -47,30 +48,30 @@ def main():
     demo_duration = dt * (N + 1)  # Duration of each demonstration
 
     # Use the average pose as input for GMR prediction
-    x_gmr = np.array([[p.pose_eucl for p in dataset] for dataset in datasets]).flatten().reshape(-1,1).T
-    #x_gmr = np.mean(zs, axis=0).reshape(-1,1).T
+    x_gmr = np.mean(zs, axis=0).reshape(-1,1).T
     
     # Prepare data for GMM/GMR
     X_force = extract_input_data(datasets)
 
     qa = datasets[0][0].rot
     quat = datasets[0][0].rot
-    start_pose = np.array([-1.45, 0., -0.001,quat[0],quat[1],quat[2],quat[3]])
-    end_pose = np.array([-1.35, 0., -0.001,quat[0],quat[1],quat[2],quat[3]])
-    x_kmp = linear_traj(start_pose, end_pose, n_points=N, qa=qa).T
+    start_pose = np.array([-0.365, 0.29, -0.004,quat[0],quat[1],quat[2],quat[3]])
+    end_pose = np.array([-0.465, 0.29, -0.004,quat[0],quat[1],quat[2],quat[3]])
+    x_kmp = linear_traj(start_pose, end_pose, n_points=N, qa=qa)[:,2].T
+    x_kmp2 = linear_traj(start_pose, end_pose, n_points=200, qa=qa)[:,2].T
     np.save(join(ROOT, "trained_models", "experiment3_qa"), qa)
 
     # GMM/GMR on the force
-    gmm = GaussianMixtureModel(n_components=5, n_demos=H)
+    gmm = GaussianMixtureModel(n_components=10, n_demos=H)
     gmm.fit(X_force)
     mu_force, sigma_force = gmm.predict(x_gmr)
 
     plt.ion()
     fig_vs, ax = plt.subplots(1, 2, figsize=(16, 8))
-    l_ = 0.05
-    alpha_ = 5e3
-    sigma_f_ = 1e3
-    z_ = 0.008
+    l_ = 1e-2
+    alpha_ = 1e2
+    sigma_f_ = 500
+    z_ = 0.004
     try:
         while True:
             l = input("l: ")
@@ -83,18 +84,17 @@ def main():
             z_ = float(z) if z != '' else z_
             ax[0].clear()
             ax[1].clear()
-            start_pose = np.array([-0.365, 0., -z_,quat[0],quat[1],quat[2],quat[3]])
-            end_pose = np.array([-0.465, 0., -z_,quat[0],quat[1],quat[2],quat[3]])
-            x_kmp = linear_traj(start_pose, end_pose, n_points=N, qa=qa).T
-            x_kmp = x_kmp[2,:]
+            start_pose = np.array([-0.365, 0.290, -z_,quat[0],quat[1],quat[2],quat[3]])
+            end_pose = np.array([-0.465, 0.290, -z_,quat[0],quat[1],quat[2],quat[3]])
+            x_kmp2 = linear_traj(start_pose, end_pose, n_points=200, qa=qa)[:,2].T
             # KMP on the force
             kmp = KMP(l=l_, alpha=alpha_, sigma_f=sigma_f_, verbose=True, time_driven_kernel=False)
             kmp.fit(x_gmr, mu_force, sigma_force)
             joblib.dump(kmp, join(ROOT, "trained_models", "experiment3_kmp.mdl"))
 
-            np.save(join(ROOT, "trained_models", "experiment3_traj.npy"), x_kmp)
+            np.save(join(ROOT, "trained_models", "experiment3_traj.npy"), x_kmp2)
 
-            mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp.reshape(-1,1).T)
+            mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp2.reshape(-1,1).T)
 
             print(f"KMP params: l: {l_}, a: {alpha_}, s: {sigma_f_}")
             print(f"KMP KL divergence: {kmp.kl_divergence}")
@@ -109,11 +109,12 @@ def main():
             for dataset in datasets:
                 plot_demo(ax, dataset, demo_duration)
                 
-            ax[0].plot(t_gmr, x_kmp, color="green")
+            t_kmp = dt * np.arange(0, x_kmp2.shape[0])
+            ax[0].plot(t_kmp, x_kmp2, color="green")
             #ax[1].plot(t_gmr, mu_force[0, :],color="red")
             #ax[1,i].fill_between(x=t_gmr, y1=mu_force[i, :]+np.sqrt(sigma_force[i, i, :]), y2=mu_force[i, :]-np.sqrt(sigma_force[i, i, :]),color="red",alpha=0.35)        
-            ax[1].plot(t_gmr, mu_force_kmp[0, :],color="green")
-            ax[1].fill_between(x=t_gmr, y1=mu_force_kmp[0, :]+np.sqrt(sigma_force_kmp[0, 0, :]), y2=mu_force_kmp[0, :]-np.sqrt(sigma_force_kmp[0, 0, :]),color="green",alpha=0.35)        
+            ax[1].plot(t_kmp, mu_force_kmp[0, :],color="green")
+            ax[1].fill_between(x=t_kmp, y1=mu_force_kmp[0, :]+np.sqrt(sigma_force_kmp[0, 0, :]), y2=mu_force_kmp[0, :]-np.sqrt(sigma_force_kmp[0, 0, :]),color="green",alpha=0.35)        
                 
             fig_vs.suptitle("Experiment 3")
             fig_vs.tight_layout()
@@ -143,15 +144,7 @@ def extract_input_data(datasets: np.ndarray, dt: float = 0.1) -> np.ndarray:
     N = len(datasets[0])  # Length of each demonstration
     
     pos = np.vstack([p.z for dataset in datasets for p in dataset]).T
-    #rot = np.vstack([p.rot_eucl for dataset in datasets for p in dataset]).T
     force = np.vstack([p.fz for dataset in datasets for p in dataset]).T
-
-    #if field != "force":
-    # Compute the derivatives of the outputs
-    dY = np.split(copy.deepcopy(force), H, axis=1)
-    for y in dY:
-        y[0, :] = np.gradient(y[0, :]) / dt
-    dY = np.hstack(dY)
 
     # Add the derivatives to the dataset
     X = np.vstack((pos, force))
@@ -193,51 +186,6 @@ def plot_demo(
         ax[i].set_ylabel(y_labels[i])
         ax[i].grid(True)
         ax[i].set_xlabel("Time [s]")
-
-# ugly ugly ugly ugly ugly
-def plot_demo_no_force(
-    ax: plt.Axes, demonstration: np.ndarray, duration: float, dt: float = 0.1
-):
-    """Plot the position, orientation (as Euclidean projection of quaternions) and force data contained in a demonstration.
-
-    Parameters
-    ----------
-    ax : plt.Axes
-        The plot axes on which to plot the data.
-    demonstration : np.ndarray
-        The array containing the demonstration data.
-    duration : float
-        Total trajectory duration, used to correctly display time.
-    duration : float, default = 0.1
-        Trajectory time step, used to correctly display time.
-    """
-
-    time = [p.time for p in demonstration] #np.arange(dt, duration - dt, dt)
-    # Recover data
-    x = [p.x for p in demonstration]
-    y = [p.y for p in demonstration]
-    z = [p.z for p in demonstration]
-    qx = [p.rot_eucl[0] for p in demonstration]
-    qy = [p.rot_eucl[1] for p in demonstration]
-    qz = [p.rot_eucl[2] for p in demonstration]
-    data = [x, y, z, qx, qy, qz]
-    y_labels = [
-        "x [m]",
-        "y [m]",
-        "z [m]",
-        "$q_{ex}$",
-        "$q_{ey}$",
-        "$q_{ez}$",
-    ]
-    # Plot everything
-    for i in range(2):
-        for j in range(3):
-            ax[i, j].plot(time, data[i * 3 + j], linewidth=0.6, color="grey")
-            ax[i, j].set_ylabel(y_labels[i * 3 + j])
-            ax[i, j].grid(True)
-            if i == 1:
-                ax[i, j].set_xlabel("Time [s]")
-
 
 if __name__ == "__main__":
     main()

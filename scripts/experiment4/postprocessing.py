@@ -49,7 +49,7 @@ def plot_demo(ax, demonstration, linewidth=1.0, color='blue', label=""):
 def main():
     # Showcase the dataset postprocessing operations
     # Process the .csv files into .npy files
-    path = 'demonstrations/experiment4'
+    path = 'demonstrations/experiment4/test'
     create_dataset(path, 20)
     # Trim any leading or trailing force-only samples
     trim_datasets(path)
