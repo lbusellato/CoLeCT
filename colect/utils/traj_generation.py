@@ -94,19 +94,37 @@ def linear_traj(start: np.ndarray, end: np.ndarray, n_points: int = 100, qa = No
 
     return traj
 
-if __name__=='__main__':
-    quat = np.array([0.985, -0.168, -0.009, -0.029])
-    quat = quat / np.linalg.norm(quat)
-    start_pose = np.array([-0.337, 0.285, -0.358,quat[0],quat[1],quat[2],quat[3]])
-    end_pose = np.array([-0.437, 0.285, -0.358,quat[0],quat[1],quat[2],quat[3]])
-    trajectory = linear_traj(start_pose, end_pose, n_points=100)
-    fig, ax = plt.subplots(2,4,figsize=(10,6))
-    ax[0,0].plot(trajectory[:,0])
-    ax[0,1].plot(trajectory[:,1])
-    ax[0,2].plot(trajectory[:,2])
-    ax[0,3].axis('off')
-    ax[1,0].plot(trajectory[:,3])
-    ax[1,1].plot(trajectory[:,4])
-    ax[1,2].plot(trajectory[:,5])
-    ax[1,3].plot(trajectory[:,6])
+def linear_traj_w_midpoint_stop(start: np.ndarray, end: np.ndarray, n_points: int = 250, n_stop: int=50, qa = None):
+    """
+    Generate a linear trajectory between two poses, with a stop at the midpoint
+
+    Parameters:
+    - start: Starting position as a numpy array.
+    - end: Ending position as a numpy array. 
+    - n_points: Number of points in the trajectory, including start and end.
+    - n_stop: Number of points to stop the trajectory in.
+
+    Returns:
+    - traj: List of positions along the trajectory.
+    """
+
+    # Generate linear trajectory between start and end
+    positions = np.array([start + i/n_points * (end - start) for i in range(n_points)])
+    midpoint = positions[positions.shape[0]//2, :]
+    positions_start = np.array([start + i/((n_points - n_stop) // 2) * (midpoint - start) for i in range((n_points - n_stop) // 2)])
+    positions_middle = np.tile(midpoint, (n_stop, 1))
+    positions_end = np.array([midpoint + i/((n_points - n_stop) // 2) * (end - midpoint) for i in range((n_points - n_stop) // 2)])
+    traj = np.vstack((positions_start, positions_middle, positions_end))
+    midpoint_idx = np.arange((n_points - n_stop) // 2, (n_points - n_stop) // 2 + n_stop)
+
+    return traj, midpoint_idx
+
+def force_step(fl: float=0.0, fh: float=1.0, nl: int=50, nh: int=50):
+    low = np.ones((nl-nh)//2) * fl
+    high = np.ones(nh) * fh
+    return np.concatenate((low, high, low))
+
+if __name__=="__main__":
+    traj = force_step(-5, -20, 250, 85)
+    plt.plot(traj)
     plt.show()

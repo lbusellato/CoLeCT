@@ -39,8 +39,10 @@ def main():
 
     zs = np.array([[p.z for p in dataset] for dataset in datasets])
     z_mean = [np.mean(z) for z in zs]
+    print(f"Delta z mean top: {np.mean(z_mean[:5])}, Delta z mean middle: {np.mean(z_mean[5:])}")
     fzs = np.array([[p.fz for p in dataset] for dataset in datasets])
     fz_mean = [np.mean(fz) for fz in fzs]
+    print(f"fz mean top: {np.mean(fz_mean[:5])}, fz mean middle: {np.mean(fz_mean[5:])}")
     fz_std = [np.std(fz) for fz in fzs]
 
 
@@ -53,75 +55,53 @@ def main():
     # Prepare data for GMM/GMR
     X_force = extract_input_data(datasets)
 
-    qa = datasets[0][0].rot
-    quat = datasets[0][0].rot
-    start_pose = np.array([-0.365, 0.29, -0.004,quat[0],quat[1],quat[2],quat[3]])
-    end_pose = np.array([-0.465, 0.29, -0.004,quat[0],quat[1],quat[2],quat[3]])
-    x_kmp = linear_traj(start_pose, end_pose, n_points=N, qa=qa)[:,2].T
-    x_kmp2 = linear_traj(start_pose, end_pose, n_points=200, qa=qa)[:,2].T
-    np.save(join(ROOT, "trained_models", "experiment3_qa"), qa)
-
     # GMM/GMR on the force
     gmm = GaussianMixtureModel(n_components=10, n_demos=H)
     gmm.fit(X_force)
     mu_force, sigma_force = gmm.predict(x_gmr)
 
-    plt.ion()
     fig_vs, ax = plt.subplots(1, 2, figsize=(16, 8))
     l_ = 1e-2
     alpha_ = 1e2
     sigma_f_ = 500
-    z_ = 0.004
-    try:
-        while True:
-            l = input("l: ")
-            l_ = float(l) if l != '' else l_
-            alpha = input("a: ")
-            alpha_ = float(alpha) if alpha != '' else alpha_
-            sigma_f = input("s: ")
-            sigma_f_ = float(sigma_f) if sigma_f != '' else sigma_f_
-            z = input("z: ")
-            z_ = float(z) if z != '' else z_
-            ax[0].clear()
-            ax[1].clear()
-            start_pose = np.array([-0.365, 0.290, -z_,quat[0],quat[1],quat[2],quat[3]])
-            end_pose = np.array([-0.465, 0.290, -z_,quat[0],quat[1],quat[2],quat[3]])
-            x_kmp2 = linear_traj(start_pose, end_pose, n_points=200, qa=qa)[:,2].T
-            # KMP on the force
-            kmp = KMP(l=l_, alpha=alpha_, sigma_f=sigma_f_, verbose=True, time_driven_kernel=False)
-            kmp.fit(x_gmr, mu_force, sigma_force)
-            joblib.dump(kmp, join(ROOT, "trained_models", "experiment3_kmp.mdl"))
+    z_ = 0.005
+        
+    ax[0].clear()
+    ax[1].clear()
+    start_pose = np.array([-0.365, 0.290, -z_])
+    end_pose = np.array([-0.465, 0.290, -z_])
+    x_kmp2 = linear_traj(start_pose, end_pose, n_points=200)[:,2].T
+    # KMP on the force
+    kmp = KMP(l=l_, alpha=alpha_, sigma_f=sigma_f_, verbose=True, time_driven_kernel=False)
+    kmp.fit(x_gmr, mu_force, sigma_force)
+    joblib.dump(kmp, join(ROOT, "trained_models", "experiment3_kmp.mdl"))
 
-            np.save(join(ROOT, "trained_models", "experiment3_traj.npy"), x_kmp2)
+    mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp2.reshape(-1,1).T)
 
-            mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp2.reshape(-1,1).T)
+    print(f"KMP params: l: {l_}, a: {alpha_}, s: {sigma_f_}")
+    print(f"KMP KL divergence: {kmp.kl_divergence}")
+    print(f"Predicted force z mean: {np.mean(mu_force_kmp[0,:])}, std: {np.mean(sigma_force_kmp[0, 0,:])}")
+    test = np.abs(np.array(z_mean) - (-z_))
+    expected = np.argmin(test)
+    print(f"Expected force z mean: {fz_mean[expected]}, std: {fz_std[expected]}")
 
-            print(f"KMP params: l: {l_}, a: {alpha_}, s: {sigma_f_}")
-            print(f"KMP KL divergence: {kmp.kl_divergence}")
-            print(f"Predicted force z mean: {np.mean(mu_force_kmp[0,:])}, std: {np.mean(sigma_force_kmp[0, 0,:])}")
-            test = np.abs(np.array(z_mean) - (-z_))
-            expected = np.argmin(test)
-            print(f"Expected force z mean: {fz_mean[expected]}, std: {fz_std[expected]}")
+    t_gmr = dt * np.arange(1,N+1)
+    
+    # Plot KMP vs GMR
+    for dataset in datasets:
+        plot_demo(ax, dataset, demo_duration)
+        
+    t_kmp = dt * (x_gmr.shape[1]/x_kmp2.shape[0]) * np.arange(0, x_kmp2.shape[0])
+    ax[0].plot(t_kmp, x_kmp2, color="green")
+    #ax[1].plot(t_gmr, mu_force[0, :],color="red")
+    #ax[1,i].fill_between(x=t_gmr, y1=mu_force[i, :]+np.sqrt(sigma_force[i, i, :]), y2=mu_force[i, :]-np.sqrt(sigma_force[i, i, :]),color="red",alpha=0.35)        
+    ax[1].plot(t_kmp, mu_force_kmp[0, :],color="green")
+    ax[1].fill_between(x=t_kmp, y1=mu_force_kmp[0, :]+np.sqrt(sigma_force_kmp[0, 0, :]), y2=mu_force_kmp[0, :]-np.sqrt(sigma_force_kmp[0, 0, :]),color="green",alpha=0.35)        
+        
+    fig_vs.suptitle("Experiment 3")
+    fig_vs.tight_layout()
 
-            t_gmr = dt * np.arange(1,N+1)
-            
-            # Plot KMP vs GMR
-            for dataset in datasets:
-                plot_demo(ax, dataset, demo_duration)
-                
-            t_kmp = dt * np.arange(0, x_kmp2.shape[0])
-            ax[0].plot(t_kmp, x_kmp2, color="green")
-            #ax[1].plot(t_gmr, mu_force[0, :],color="red")
-            #ax[1,i].fill_between(x=t_gmr, y1=mu_force[i, :]+np.sqrt(sigma_force[i, i, :]), y2=mu_force[i, :]-np.sqrt(sigma_force[i, i, :]),color="red",alpha=0.35)        
-            ax[1].plot(t_kmp, mu_force_kmp[0, :],color="green")
-            ax[1].fill_between(x=t_kmp, y1=mu_force_kmp[0, :]+np.sqrt(sigma_force_kmp[0, 0, :]), y2=mu_force_kmp[0, :]-np.sqrt(sigma_force_kmp[0, 0, :]),color="green",alpha=0.35)        
-                
-            fig_vs.suptitle("Experiment 3")
-            fig_vs.tight_layout()
-
-            plt.show(block=False)
-    except KeyboardInterrupt:
-        pass
+    plt.show()
 
 def extract_input_data(datasets: np.ndarray, dt: float = 0.1) -> np.ndarray:
     """Creates the input array for training the GMMs

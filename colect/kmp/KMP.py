@@ -184,8 +184,8 @@ class KMP:
         k = np.zeros((self.N * self.O, self.N * self.O))
         # Construct the estimator
         N = self.s.shape[1]
-        for i in range(N):
-            for j in range(N):
+        for i in range(self.N):
+            for j in range(self.N):
                 kernel = self.__kernel_matrix(self.s[:, i], self.s[:, j])
                 k[i * self.O : (i + 1) * self.O, j * self.O : (j + 1) * self.O] = kernel
                 if i == j:

@@ -41,7 +41,7 @@ def main():
     dt = 1 / frequency
 
     _logger.info("Initializing robot...")
-    #ur_robot = URRobot(robot_ip, frequency=frequency)
+    ur_robot = URRobot(robot_ip, frequency=frequency)
 
     timing = Timing()
 
@@ -49,20 +49,22 @@ def main():
     kmp = joblib.load(join(ROOT, "trained_models", "experiment3_kmp.mdl"))
     kmp.verbose = False
 
-    start_pose = np.array([-0.365, 0.290, -0.004])
-    end_pose = np.array([-0.465, 0.290, -0.004])
-    traj = linear_traj(start_pose, end_pose, n_points=200)[:,2].T
-    kmp_force_target, _ = kmp.predict(traj.reshape(-1,1).T)
-
     rot_vector = np.array([3.14, 0.0, 0.0])
-    quat = Quaternion.from_rotation_vector(rot_vector)
-    start_pose = np.array([-0.365, 0.290, 0.02,quat[1],quat[2],quat[3],quat[0]])
-    end_pose = np.array([-0.465, 0.290, 0.02,quat[1],quat[2],quat[3],quat[0]])
-    qa = np.load(join(ROOT, "trained_models", "experiment3_qa.npy"), allow_pickle=True).item()
-    traj = linear_traj(start_pose, end_pose, n_points=200, qa=qa).T
-    rotvecs = np.array([(Quaternion.exp(traj[3:,i])*qa).as_rotation_vector() for i in range(traj.shape[1])]).T
-    traj[3:, :] = rotvecs
+    
+    start_pose = np.array([-0.365, 0.290, 0.02])
+    end_pose = np.array([-0.465, 0.290, 0.02])
+    
+    traj = linear_traj(start_pose, end_pose, n_points=200).T
+    traj = np.vstack((traj, np.tile(rot_vector, (traj.shape[1], 1)).T))
+
     traj_i = 0
+
+    start_pos_kmp = np.array([-0.365, 0.290, -0.005])
+    end_pos_kmp = np.array([-0.465, 0.290, -0.005])
+    kmp_traj = linear_traj(start_pos_kmp, end_pos_kmp, n_points=200)[:,2].reshape(-1,1).T
+
+    kmp_force_target, _ = kmp.predict(kmp_traj)
+
 
     START_POSE = traj[:,0]
     APPROACH_POSE = traj[:,0] + np.array([0.0, 0.0, 0.1, 0.0, 0.0, 0.0])
@@ -77,7 +79,7 @@ def main():
     time.sleep(0.5)
     ur_robot.moveJ_IK(START_POSE)
     time.sleep(0.5)
-    #input("Press any key to start")
+    input("Press any key to begin")
 
     # receive initial robot data
     ur_robot.receive_data()
@@ -100,7 +102,7 @@ def main():
     #adm_controller.D = np.diag([500, 500, 100]) 
     #adm_controller.K = np.diag([5*54, 5*54, 0.0])
     adm_controller.M = np.diag([2.5, 2.5, 2.5])
-    adm_controller.D = np.diag([500, 500, 125]) 
+    adm_controller.D = np.diag([500, 500, 200]) 
     adm_controller.K = np.diag([5*54, 5*54, 0])
 
     adm_controller.Mo = np.diag([0.25, 0.25, 0.25])
@@ -126,8 +128,8 @@ def main():
                               'kmp_target_TCP_pose_3',
                               'kmp_target_TCP_pose_4',
                               'kmp_target_TCP_pose_5',
-                              'timestamp'])
-    recorder.start()
+                              'us_image_timestamp'])
+    #recorder.start()
 
     do_homing = True
     done = False
@@ -138,6 +140,11 @@ def main():
             start_time = time.perf_counter()
 
             ur_robot.receive_data()
+
+            if np.any(np.abs(ur_robot.ft) > 20):
+                ur_robot.stop_control()
+                print("F too high! Stopping...")
+                done = True
 
             # Get current robot pose
             T_base_tcp = get_robot_pose_as_transform(ur_robot)
@@ -152,7 +159,8 @@ def main():
             mu_base = ur_robot.ft[3:6]
 
             x_desired = traj[:3, traj_i]
-            f_target = np.zeros(3)#kmp_force_target[:, traj_i]
+            f_target = np.array([0.0, 0.0, kmp_force_target[0, traj_i]])
+
 
             # The input position and orientation is given as tip in base
             adm_controller.pos_input = T_base_tcp_pos
@@ -176,7 +184,7 @@ def main():
             ur_robot.control_step()
 
             # Record data
-            recorder.add_data(np.hstack((f_target, mu_base, x_desired, rotvecs[:,traj_i], timing.get_timestamp())))
+            #recorder.add_data(np.hstack((f_target, mu_base, x_desired, rot_vector, timing.get_timestamp())))
 
             # Next traj point, end if there isn't one
             if elapsed > duration / traj.shape[1]:
@@ -196,7 +204,7 @@ def main():
         do_homing = False
 
     # Stop the recording
-    recorder.stop()
+    #recorder.stop()
 
     # Stop the robot
     ur_robot.stop_control()

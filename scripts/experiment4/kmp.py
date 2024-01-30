@@ -11,7 +11,7 @@ from colect.dataset import load_datasets, as_array, from_array
 from colect.datatypes import Quaternion
 from colect.mixture import GaussianMixtureModel
 from colect.kmp import KMP
-from colect.utils import linear_traj
+from colect.utils import linear_traj_w_midpoint_stop, linear_traj
 
 # Set up logging
 logging.basicConfig(
@@ -29,7 +29,7 @@ def main():
 
     # Load the demonstrations
     datasets = load_datasets("demonstrations/experiment4")
-    datasets = datasets[:4]
+    datasets = datasets[:5]
     for i, dataset in enumerate(datasets):
         datasets[i] = dataset[::subsample]
 
@@ -45,64 +45,40 @@ def main():
     poses = np.stack((dataset_arrs), axis=2)
     x_gmr = np.mean(poses, axis=2)[:, [2,3,4]].T
 
-    # Local frames
-    A1 = np.eye(6)
-    b1 = np.array([*x_gmr[:,0],0,0,0])#np.zeros(6)
-    A2 = np.eye(6)
-    b2 = np.array([*x_gmr[:,-1],0,0,0])#np.zeros(6)
-    An = [A1, A2]
-    bn = [b1, b2]
-
     # Demonstrations
     X_force = extract_input_data(datasets)
 
     # New trajectory for KMP
-    start_pose = np.array([-0.465, 0.290, 0.05])
-    end_pose = np.array([-0.365, 0.290, 0.05])
-    x_kmp = linear_traj(start_pose, end_pose, n_points=N)[:, :3].T
+    start_pose = np.array([-0.365, 0.290, 0.02])
+    end_pose = np.array([-0.465, 0.290, 0.02])
+    x_kmp, _ = linear_traj_w_midpoint_stop(start_pose, end_pose, n_points=x_gmr.shape[1], n_stop=20)
+    x_kmp = x_kmp.T
+    x_kmp2, _ = linear_traj_w_midpoint_stop(start_pose, end_pose, n_points=250, n_stop=85)
+    x_kmp2 = x_kmp2.T
 
-    # Project demonstrations and GMR input into local frames
-    X_force_p = [np.array([A @ (row - b) for row in zip(*X_force.T)]) for A, b in zip(An, bn)]
-    x_gmr_p = [np.array([A[:3, :3] @ (row - b[:3]) for row in zip(*x_gmr)]).T for A, b in zip(An, bn)]
+    gmm = GaussianMixtureModel(n_components=10, n_demos=H)
+    gmm.fit(X_force)
+    mu_force, sigma_force = gmm.predict(x_gmr)
 
-    # Extract local reference databases
-    mu_gmr_p = []
-    sigma_gmr_p = []
-    for X, x in zip(X_force_p, x_gmr_p):
-        gmm = GaussianMixtureModel(n_components=10, n_demos=H)
-        gmm.fit(X)
-        mu_force, sigma_force = gmm.predict(x)
-        mu_gmr_p.append(mu_force)
-        sigma_gmr_p.append(sigma_force)
+    kmp = KMP(l=1e-4, alpha=5e4, sigma_f=1e4, time_driven_kernel=False)
+    kmp.fit(x_kmp, mu_force, sigma_force)
 
-    # Project the new input into the local frames
-    x_kmp_p = [np.array([A[:3, :3] @ (row - b[:3]) for row in zip(*x_kmp)]).T for A, b in zip(An, bn)]    
+    mu_kmp, sigma_kmp = kmp.predict(x_kmp2)
+    joblib.dump(kmp, join(ROOT, "trained_models", "experiment4_kmp.mdl"))
 
-    kmp = KMP(l=1e-5, alpha=1e4, sigma_f=1e5, time_driven_kernel=False)
-    mu_kmp_p = []
-    sigma_kmp_p = []
-    for x_train, x_test, mu, sigma in zip(x_kmp_p, x_kmp_p, mu_gmr_p, sigma_gmr_p):
-        kmp.fit(x_train, mu, sigma)
-        mu_kmp, sigma_kmp = kmp.predict(x_test)
-        mu_kmp_p.append(mu_kmp)
-        sigma_kmp_p.append(sigma_kmp)
-
-    mu_force = []
-    for i in range(x_kmp.shape[1]):
-        sigma_p_inv = np.array([np.linalg.inv(sigma[:,:,i]) for sigma in sigma_kmp_p])
-        sigma_p_inv = np.linalg.inv(np.sum(sigma_p_inv, axis=0))
-        sigma_p_inv_prod = np.array([np.linalg.inv(sigma[:,:,i])@mu[:,i] for mu, sigma in zip(mu_kmp_p, sigma_kmp_p)])
-        sigma_p_inv_prod = np.sum(sigma_p_inv, axis=0)
-        mu_force.append(sigma_p_inv @ sigma_p_inv_prod)
-    mu_force = np.vstack(mu_force).T
 
     fig_vs, ax = plt.subplots(2, 3, figsize=(16, 8))
     for dataset in datasets:
         plot_demo(ax, dataset, demo_duration)
 
-    t_gmr = dt * np.arange(0,mu_force.shape[1])
+    t_gmr = dt * np.arange(0,x_gmr.shape[1])
+    t_kmp = dt * (x_gmr.shape[1] / x_kmp2.shape[1]) * np.arange(0,x_kmp2.shape[1])
     for i in range(3):
+        ax[0,i].plot(t_gmr, x_gmr[i, :],color="red")
+        ax[0,i].plot(t_kmp, x_kmp2[i, :],color="green")
         ax[1,i].plot(t_gmr, mu_force[i, :],color="red")
+        ax[1,i].plot(t_kmp, mu_kmp[i, :],color="green")
+        ax[1,i].fill_between(x=t_kmp, y1=mu_kmp[i, :]+np.sqrt(sigma_kmp[i, i, :]), y2=mu_kmp[i, :]-np.sqrt(sigma_kmp[i, i, :]),color="green",alpha=0.35)       
 
     fig_vs.suptitle("Experiment 4")
     fig_vs.tight_layout()

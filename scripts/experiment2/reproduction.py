@@ -122,7 +122,7 @@ def main():
                               'kmp_target_TCP_pose_3',
                               'kmp_target_TCP_pose_4',
                               'kmp_target_TCP_pose_5',
-                              'timestamp'])
+                              'us_image_timestamp'])
     recorder.start()
 
     do_homing = True

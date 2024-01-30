@@ -251,10 +251,10 @@ def align_datasets(datasets_path: str = '', gamma: float=2.5):
     np.save(join(ROOT, datasets_path, files[0]), datasets[0])
     reference = as_array(datasets[0])
     reference_time = reference[:, 1]
-    reference = reference[:, [1, 14]]
+    reference = reference[:, 14]
     for i, dataset in enumerate(datasets):
         if i > 0:
-            cost_matrix, _ = soft_dtw_alignment(as_array(dataset)[:, [1, 14]], reference, gamma=gamma)
+            cost_matrix, _ = soft_dtw_alignment(as_array(dataset)[:, 14], reference, gamma=gamma)
             alignment = compute_alignment_path(cost_matrix)
             new_dataset = dataset[alignment]
             for j, point in enumerate(new_dataset):

@@ -9,7 +9,7 @@ from glob import glob
 from matplotlib.offsetbox import AnnotationBbox, OffsetImage
 from os.path import dirname, abspath, join
 
-ROOT = dirname(dirname(abspath(__file__)))
+ROOT = dirname(dirname(dirname(abspath(__file__))))
 
 
 def plot_demo(ax, demonstration, linewidth=1.0, color='blue'):

@@ -5,12 +5,15 @@ import numpy as np
 import joblib
 import time
 
+from matplotlib.patches import Ellipse
+
+from itertools import product
 from os.path import dirname, abspath, join
 from colect.dataset import load_datasets, as_array, from_array
 from colect.datatypes import Quaternion
 from colect.mixture import GaussianMixtureModel
 from colect.kmp import KMP
-from colect.utils import linear_traj
+from colect.utils import linear_traj_w_midpoint_stop, linear_traj
 
 # Set up logging
 logging.basicConfig(
@@ -22,147 +25,75 @@ logging.basicConfig(
 ROOT = dirname(dirname(dirname(abspath(__file__))))
 
 # One every 'subsample' data points will be kept for each demonstration
-subsample = 10
+subsample = 5
 
 def main():
 
     # Load the demonstrations
-    datasets = load_datasets("demonstrations/experiment4")
-    datasets = datasets[:5]
-    for i, dataset in enumerate(datasets):
-        datasets[i] = dataset[::subsample]
+    datasets = load_datasets("demonstrations/experiment5/training")
+    datasets = [dataset[::subsample] for dataset in datasets]
 
     H = len(datasets)  # Number of demonstrations
     N = len(datasets[0])  # Length of each demonstration
 
-
     dt = 0.001
     demo_duration = dt * (N + 1)  # Duration of each demonstration
 
-    # Use the average pose as input for GMR prediction
+    # Input for GMR
     dataset_arrs = [as_array(dataset) for dataset in datasets]
-    poses = np.stack((dataset_arrs))
-    x_gmr = np.mean(poses, axis=0)[:, [2,3,4]].T
-    
-    # Prepare data for GMM/GMR
+    poses = np.stack((dataset_arrs), axis=2)
+    x_gmr = np.mean(poses, axis=2)[:-1, [2,3,4]].T
+
+    # Demonstrations
     X_force = extract_input_data(datasets)
 
-    # Generate the trajectory
-    start_pose = np.array([-0.365, 0.290, 0.05])
-    end_pose = np.array([-0.415, 0.290, 0.05])
-    x_kmp_test = linear_traj(start_pose, end_pose, n_points=N)[:, :3].T
-    x_kmp_test2 = linear_traj(start_pose, end_pose, n_points=N//2)[:, :3].T
-    start_pose2 = x_kmp_test2[:,-1]#np.array([-0.465, 0.290, 0.05])
-    end_pose2 = np.array([-0.465, 0.290, 0.05])
-    x_kmp_test3 = linear_traj(start_pose2, end_pose2, n_points=N//2)[:, :3].T
+    start_pose = np.array([-0.365, 0.29, 0.128])
+    end_pose = np.array([-0.395, 0.29, 0.128])
 
-    np.save(join(ROOT, "trained_models", "experiment4_traj.npy"), x_kmp_test)
+    first_slide = linear_traj(start_pose, end_pose, n_points=20).T
 
-    # An are the rotation matrices for the start and end frame
-    An = np.array([np.linalg.inv(np.eye(6)), np.linalg.inv(np.eye(6))])
-    # bn are the translation vectors for the start and end frame
-    bn = np.array([[*start_pose, 0, 0, 0], [*end_pose, 0, 0, 0]])
-    X_force = extract_input_data(datasets)
-    # X_p are the local demonstration databases
-    X_p = [np.array([A @ (row - b) for row in zip(*X_force.T)]) for A, b in zip(An, bn)]
+    first_push = np.tile(first_slide[:,-1], (15, 1)).T
+
+    start_pose = np.array([-0.395, 0.29, 0.128])
+    end_pose = np.array([-0.415, 0.29, 0.128])
+    second_slide = linear_traj(start_pose, end_pose, n_points=30).T
     
-    # Project the reference trajectory to the local dbs
-    x_gmr_p = [np.array([A[:3, :3] @ (row - b[:3]) for row in zip(*x_gmr)]).T for A, b in zip(An, bn)]
+    second_push = np.tile(second_slide[:,-1], (15, 1)).T
+    traj = np.hstack((first_slide, first_push, second_slide, second_push))
+
+    x_kmp = linear_traj(start_pose, end_pose, n_points=x_gmr.shape[1]).T
+    x_kmp2 = linear_traj(start_pose, end_pose, n_points=200).T
     
-    # Extract the local reference databases
-    mu_gmr_p = []
-    sigma_gmr_p = []
-    for X, x_gmr in zip(X_p, x_gmr_p):
-        gmm = GaussianMixtureModel(n_components=10, n_demos=H)
-        gmm.fit(X)
-        mu_force, sigma_force = gmm.predict(x_gmr)
-        mu_gmr_p.append(mu_force)
-        sigma_gmr_p.append(sigma_force)
+    x_kmp = traj
+    x_kmp2 = x_kmp#traj
 
-    # Project the input into the local frames
-    x_kmp_p = [np.array([A[:3, :3] @ (row - b[:3]) for row in zip(*x_kmp_test)]).T for A, b in zip(An, bn)]
-    x_kmp_p2 = [np.array([A[:3, :3] @ (row - b[:3]) for row in zip(*x_kmp_test2)]).T for A, b in zip(An, bn)]
-    x_kmp_p3 = [np.array([A[:3, :3] @ (row - b[:3]) for row in zip(*x_kmp_test3)]).T for A, b in zip(An, bn)]
+    gmm = GaussianMixtureModel(n_components=14, n_demos=H)
+    gmm.fit(X_force)
+    mu_force, sigma_force = gmm.predict(x_gmr)
 
-    # Run KMP on both reference databases
-    mu_kmp_p1 = []
-    sigma_kmp_p1 = []
-    kmp = KMP(l=1e-5, alpha=1e4, sigma_f=1e5, time_driven_kernel=False)
-    for x_kmp, x_kmp2, mu_gmr, sigma_gmr in zip(x_kmp_p, x_kmp_p2, mu_gmr_p, sigma_gmr_p):
-        kmp.fit(x_kmp, mu_gmr, sigma_gmr)
-        mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp2)
-        mu_kmp_p1.append(mu_force_kmp)
-        sigma_kmp_p1.append(sigma_force_kmp)
-    mu_kmp_p1 = np.array(mu_kmp_p1)
-    sigma_kmp_p1 = np.array(sigma_kmp_p1)
+    kmp = KMP(l=1e-4, alpha=1e4, sigma_f=2e4, time_driven_kernel=False)
+    kmp.fit(x_kmp, mu_force, sigma_force)
 
-    # Equation 46 in the paper
-    mu_force_kmp1 = []
-    for i in range(x_kmp_test2.shape[1]):
-        sigma = [np.linalg.inv(sigmas[:, :, i]) for sigmas in sigma_kmp_p1]
-        sigma_sum_inv = np.linalg.inv(np.sum(sigma, axis=0))
-        sigma_times_mu = [np.linalg.inv(sigmas[:, :, i])@mus[:, i] for sigmas, mus in zip(sigma_kmp_p1, mu_kmp_p1)]
-        sigma_times_mu_sum = np.sum(sigma_times_mu, axis=0)
-        mu_force_kmp1.append(sigma_sum_inv @ sigma_times_mu_sum)
-    mu_force_kmp1 = np.array(mu_force_kmp1).T
+    mu_kmp, sigma_kmp = kmp.predict(x_kmp2)
+    joblib.dump(kmp, join(ROOT, "trained_models", "experiment5_kmp.mdl"))
 
-    # Run KMP on both reference databases
-    mu_kmp_p2 = []
-    sigma_kmp_p2 = []
-    kmp = KMP(l=1e-5, alpha=1e4, sigma_f=1e5, time_driven_kernel=False)
-    for x_kmp, x_kmp2, mu_gmr, sigma_gmr in zip(x_kmp_p, x_kmp_p3, mu_gmr_p, sigma_gmr_p):
-        kmp.fit(x_kmp, mu_gmr, sigma_gmr)
-        mu_force_kmp, sigma_force_kmp = kmp.predict(x_kmp2)
-        mu_kmp_p2.append(mu_force_kmp)
-        sigma_kmp_p2.append(sigma_force_kmp)
-    mu_kmp_p2 = np.array(mu_kmp_p2)
-    sigma_kmp_p2 = np.array(sigma_kmp_p2)
-
-    # Equation 46 in the paper
-    mu_force_kmp2 = []
-    for i in range(x_kmp_test3.shape[1]):
-        sigma = [np.linalg.inv(sigmas[:, :, i]) for sigmas in sigma_kmp_p2]
-        sigma_sum_inv = np.linalg.inv(np.sum(sigma, axis=0))
-        sigma_times_mu = [np.linalg.inv(sigmas[:, :, i])@mus[:, i] for sigmas, mus in zip(sigma_kmp_p2, mu_kmp_p2)]
-        sigma_times_mu_sum = np.sum(sigma_times_mu, axis=0)
-        mu_force_kmp2.append(sigma_sum_inv @ sigma_times_mu_sum)
-    mu_force_kmp2 = np.array(mu_force_kmp2).T
-
-    if False:
-        # Set some waypoints
-        wp_width = 10 # How many points before and after the middle to consider
-        var = 1e-8 # Variance to achieve
-        Fz = 0 # Force in z to achieve
-
-        middle_index = x_kmp.shape[1] // 2
-        waypoints = x_kmp[:, middle_index - wp_width : middle_index + wp_width + 1]
-        N_points = waypoints.shape[1]
-        forces = np.tile(np.array([0.0, 0.0, Fz]).reshape(-1,1), (1, N_points))
-        sigmas = np.repeat(var*np.eye(3)[:, :, np.newaxis], N_points, axis=2)
-
-        kmp.set_waypoint(waypoints, forces, sigmas)
 
     fig_vs, ax = plt.subplots(2, 3, figsize=(16, 8))
-    for dataset in datasets:
+    for i,dataset in enumerate(datasets):
         plot_demo(ax, dataset, demo_duration)
 
     t_gmr = dt * np.arange(0,x_gmr.shape[1])
-    t_kmp2 = dt * np.arange(0,x_kmp_test2.shape[1])
-    t_kmp3 = t_kmp2[-1] + dt * np.arange(0,x_kmp_test3.shape[1])
-    t_kmp1 = dt * np.arange(0,mu_force_kmp1.shape[1])
-    t_kmp4 = t_kmp1[-1] + dt * np.arange(0,mu_force_kmp2.shape[1])
+    t_kmp = dt * (x_gmr.shape[1] / x_kmp2.shape[1]) * np.arange(0,x_kmp2.shape[1])
     for i in range(3):
-        ax[0,i].plot(t_kmp2, x_kmp_test2[i,:], color="green")
-        ax[0,i].plot(t_kmp3, x_kmp_test3[i,:], color="blue")
+        ax[0,i].plot(t_gmr, x_gmr[i, :],color="red")
+        ax[0,i].plot(t_kmp, x_kmp2[i, :],color="green")
         ax[1,i].plot(t_gmr, mu_force[i, :],color="red")
-        ax[1,i].plot(t_kmp1, mu_force_kmp1[i, :],color="green")
-        ax[1,i].plot(t_kmp4, mu_force_kmp2[i, :],color="blue")
-
-    fig_vs.suptitle("Experiment 4")
+        ax[1,i].plot(t_kmp, mu_kmp[i, :],color="green")
+        ax[1,i].fill_between(x=t_kmp, y1=mu_kmp[i, :]+np.sqrt(sigma_kmp[i, i, :]), y2=mu_kmp[i, :]-np.sqrt(sigma_kmp[i, i, :]),color="green",alpha=0.35)       
+    fig_vs.suptitle("Experiment 5")
     fig_vs.tight_layout()
 
     plt.show()
-
 
 def extract_input_data(datasets: np.ndarray, dt: float = 0.1) -> np.ndarray:
     """Creates the input array for training the GMMs
@@ -180,10 +111,6 @@ def extract_input_data(datasets: np.ndarray, dt: float = 0.1) -> np.ndarray:
         An array of shape (n_samples, n_features) containing the input for training the GMMs.
     """
 
-    # Extract the shape of each demonstration
-    H = len(datasets)  # Number of demonstrations
-    N = len(datasets[0])  # Length of each demonstration
-    
     pos = np.vstack([p.position for dataset in datasets for p in dataset]).T
     force = np.vstack([p.force for dataset in datasets for p in dataset]).T
 
@@ -195,7 +122,7 @@ def extract_input_data(datasets: np.ndarray, dt: float = 0.1) -> np.ndarray:
 
 
 def plot_demo(
-    ax: plt.Axes, demonstration: np.ndarray, duration: float, dt: float = 0.1
+    ax: plt.Axes, demonstration: np.ndarray, duration: float, dt: float = 0.1, label: str = ''
 ):
     """Plot the position, orientation (as Euclidean projection of quaternions) and force data contained in a demonstration.
 
@@ -212,7 +139,7 @@ def plot_demo(
     """
 
     time = [p.time for p in demonstration] 
-    time = 0.001 * np.arange(1, len(time) + 1)
+    time = [0.001*i for i in range(len(time))] 
     # Recover data
     x = [p.x for p in demonstration]
     y = [p.y for p in demonstration]
@@ -232,7 +159,7 @@ def plot_demo(
     # Plot everything
     for i in range(2):
         for j in range(3):
-            ax[i, j].plot(time, data[i * 3 + j], linewidth=0.6, color="grey")
+            ax[i, j].plot(time, data[i * 3 + j], linewidth=0.6, color='grey')
             ax[i, j].set_ylabel(y_labels[i * 3 + j])
             ax[i, j].grid(True)
             if i == 2:

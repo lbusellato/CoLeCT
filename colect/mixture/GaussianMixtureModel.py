@@ -32,12 +32,13 @@ class GaussianMixtureModel():
     def __init__(self,
                  n_components: int = 10,
                  n_demos: int = 5,
-                 diag_reg_factor: float = 1e-6) -> None:
+                 diag_reg_factor: float = 1e-6,
+                 random_state=420) -> None:
         self.n_components = n_components
         self.n_demos = n_demos
         self.diag_reg_factor = diag_reg_factor
         self.model = GaussianMixture(
-            n_components=n_components, reg_covar=diag_reg_factor)
+            n_components=n_components, reg_covar=diag_reg_factor, random_state=random_state)
         self.logger = logging.getLogger(__name__)
 
     def fit(self, data: np.ndarray) -> None:

@@ -49,7 +49,7 @@ def plot_demo(ax, demonstration, linewidth=1.0, color='blue', label=""):
 def main():
     # Showcase the dataset postprocessing operations
     # Process the .csv files into .npy files
-    path = 'demonstrations/experiment4/test'
+    path = 'demonstrations/experiment4'
     create_dataset(path, 20)
     # Trim any leading or trailing force-only samples
     trim_datasets(path)
@@ -75,6 +75,8 @@ def main():
     clip_datasets(path, float(lower_t), float(upper_t))
     flip_fz(path)
     check_quat_signs(path)
+    # Align the demos temporally with soft-DTW
+    align_datasets(path)
     processed = load_datasets(path)
     fig, ax = plt.subplots(4, 4, figsize=(16, 8))
     for i, dataset in enumerate(processed):

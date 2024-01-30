@@ -13,7 +13,7 @@ from colect.datatypes import Quaternion
 from colect.robot import URRobot, DataRecording
 from colect.utils.math import *
 from colect.utils.Timing import Timing
-from colect.utils import linear_traj
+from colect.utils import linear_traj, force_step
 from colect.controller.AdmittanceController import AdmittanceController
 
 _logger = logging.getLogger('colect')
@@ -46,18 +46,30 @@ def main():
     timing = Timing()
 
     # Load the trained model and trajectory
-    kmp = joblib.load(join(ROOT, "trained_models", "experiment2_kmp.mdl"))
+    kmp = joblib.load(join(ROOT, "trained_models", "experiment5_kmp.mdl"))
     kmp.verbose = False
 
-    rot_vector = np.array([3.14, 0.0, 0.0])
-    quat = Quaternion.from_rotation_vector(rot_vector)
-    start_pose = np.array([-0.365, 0.290, 0.05,quat[1],quat[2],quat[3],quat[0]])
-    end_pose = np.array([-0.465, 0.290, 0.05,quat[1],quat[2],quat[3],quat[0]])
-    qa = np.load(join(ROOT, "trained_models", "experiment2_qa.npy"), allow_pickle=True).item()
-    traj = linear_traj(start_pose, end_pose, n_points=200, qa=qa).T
+    # New trajectory for KMP
+    start_pose = np.array([-0.365, 0.29, 0.128])
+    end_pose = np.array([-0.395, 0.29, 0.128])
+
+    first_slide = linear_traj(start_pose, end_pose, n_points=3*20).T
+
+    first_push = np.tile(first_slide[:,-1], (3*15, 1)).T
+
+    start_pose = np.array([-0.395, 0.29, 0.128])
+    end_pose = np.array([-0.415, 0.29, 0.128])
+    second_slide = linear_traj(start_pose, end_pose, n_points=3*30).T
+    
+    second_push = np.tile(second_slide[:,-1], (3*15, 1)).T
+    traj = np.hstack((first_slide, first_push, second_slide, second_push))
+
     kmp_force_target, _ = kmp.predict(traj)
-    rotvecs = np.array([(Quaternion.exp(traj[3:,i])*qa).as_rotation_vector() for i in range(traj.shape[1])]).T
-    traj[3:, :] = rotvecs
+    #kmp_force_target = force_step(-5, -10, 250, 85)
+
+    rot_vector = np.array([3.14, 0.0, 0.0])
+    rotvecs = np.tile(rot_vector, (traj.shape[1], 1)).T
+    traj = np.vstack((traj, rotvecs))
     traj_i = 0
 
     START_POSE = traj[:,0]
@@ -73,7 +85,7 @@ def main():
     time.sleep(0.5)
     ur_robot.moveJ_IK(START_POSE)
     time.sleep(0.5)
-    #input("Press any key to start")
+    input("Press any key to begin")
 
     # receive initial robot data
     ur_robot.receive_data()
@@ -96,7 +108,7 @@ def main():
     #adm_controller.D = np.diag([500, 500, 100]) 
     #adm_controller.K = np.diag([5*54, 5*54, 0.0])
     adm_controller.M = np.diag([2.5, 2.5, 2.5])
-    adm_controller.D = np.diag([500, 500, 125]) 
+    adm_controller.D = np.diag([500, 500, 200]) 
     adm_controller.K = np.diag([5*54, 5*54, 0])
 
     adm_controller.Mo = np.diag([0.25, 0.25, 0.25])
@@ -122,7 +134,7 @@ def main():
                               'kmp_target_TCP_pose_3',
                               'kmp_target_TCP_pose_4',
                               'kmp_target_TCP_pose_5',
-                              'timestamp'])
+                              'us_image_timestamp'])
     recorder.start()
 
     do_homing = True
@@ -134,6 +146,11 @@ def main():
             start_time = time.perf_counter()
 
             ur_robot.receive_data()
+
+            if np.any(np.abs(ur_robot.ft) > 25):
+                ur_robot.stop_control()
+                print("F too high! Stopping...")
+                done = True
 
             # Get current robot pose
             T_base_tcp = get_robot_pose_as_transform(ur_robot)
@@ -148,7 +165,8 @@ def main():
             mu_base = ur_robot.ft[3:6]
 
             x_desired = traj[:3, traj_i]
-            f_target = np.zeros(3)#kmp_force_target[:, traj_i]
+            f_target = np.array([0.0, 0.0, kmp_force_target[2, traj_i]])
+
 
             # The input position and orientation is given as tip in base
             adm_controller.pos_input = T_base_tcp_pos
