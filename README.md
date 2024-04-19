@@ -6,14 +6,12 @@ This repository contains the code for the CoLeCT project. The project is an end-
 * Post-processing the recorded demonstrations using Soft-DTW to temporally align them.
 * Probabilistic modeling of the demonstration database using Gaussian Mixture Models (GMMs) and Gaussian Mixture Regression (GMR).
 * Learning the probabilistic features of the trajectories using Kernelized Movement Primitives (KMP).
-* Uncertainty-aware controller gain computation using a Linear-Quadratic Regulator (LQR).
-* Reproduction on an UR5e robotic manipulator with a parallel position/force controller.
+* Reproduction on an UR5e robotic manipulator with a custom admittance controller.
 
 ## Table of contents
 
 - [CoLeCT - Control and Learning of Contact Transitions](#colect---control-and-learning-of-contact-transitions)
   * [Setup](#setup)
-  * [TODO](#TODO)
   * [Demonstration recording](#demonstration-recording)
   * [Dataset postprocessing](#dataset-postprocessing)
     + [Dataset creation](#dataset-creation)
@@ -24,8 +22,7 @@ This repository contains the code for the CoLeCT project. The project is an end-
     + [GMM/GMR](#gmmgmr)
     + [KMP](#kmp)
   * [Reproduction](#reproduction)
-    + [LQR](#lqr)
-    + [Parallel position/force controller](#parallel-positionforce-controller)
+    + [Admittance controller](#admittance-controller)
 
 ## Setup
 
@@ -33,30 +30,22 @@ The package requirements for the project are listed in [requirements.txt](https:
 
     python3 -m venv colect-venv
     source colect-venv/bin/activate
-    python3 -m pip install -r requirements.txt
+    python3 -m pip install -e .
     source colect-venv/bin/activate
 
 To use the demonstration recording pipeline, an OptiTrack camera system with Motive version 2.x is needed.
 
 To use the reproduction pipeline on UR5 robots, a real-time kernel and the SDU ur_rtde library are needed. To enable real-time capabilities on Ubuntu follow [this guide](https://sdurobotics.gitlab.io/ur_rtde/guides/guides.html#linux). To install the library follow [this guide](https://sdurobotics.gitlab.io/ur_rtde/installation/installation.html).
 
-## TODO
-
-* #FEATURE KMP w/ null-space projector
-* #FEATURE Threaded LQR gain computation
-* #FEATURE Hyperparameter tuning for GMM, GMR and KMP
-* #ENHANCEMENT Recording both robot base and handheld tool at the same time, making the coordinate shift part of the recording instead of the postprocessing
-* #ENHANCEMENT Motive server IP autodiscovery
-
 ## Demonstration recording
 
 The demonstration recording part of the framework was built around a custom-made handheld recording tool. 
 
 <p align="center">
-  <img src="media/render.png" width="600" height="400" >
+  <img src="media/acq_setup_white_v2.png" width="600" height="600" >
 </p>
 
-The tool has six OptiTrack markers used for recording the position and orientation, and a Wittenstein HEX12 6DOF force/torque sensor mounted on the end-effector.
+The tool has six OptiTrack markers used for recording the position and orientation, and a Wittenstein HEX12 6DOF force/torque sensor mounted on the end-effector. The 3D files for the tool are available under the [models/](models/) folder.
 
 Demonstration recording is handled by the Recorder class. A sample usage can be found in [scripts/demonstration_recording.py](https://github.com/lbusellato/colect/blob/main/requirements.txt). 
 
@@ -86,17 +75,11 @@ Where *pos_N* are the three cartesian coordinates, *quat_N* are the four compone
   
 ## Dataset postprocessing
 
-All the following steps are showcased in the [scripts/dataset_postprocessing.py](scripts/dataset_postprocessing.py) script.
+All the following steps are showcased in the *postprocessing.py* script of each experiment under [scripts/](https://github.com/lbusellato/colect/blob/main/scripts/).
 
 ### Dataset creation
 
-The trajectory recording should be placed within the same directory and given an identifying name. For instance, the single point task the recordings are named 'single_point_task_NN.csv', where NN is a progressive identifying number. This is because all functions for dataset postprocessing identify the files they need using regex strings.
-
-The first step is to convert the .csv files into .npy files. The create_dataset() function does just that, taking as arguments the path of the directory holding the demonstration, relative to the project root, and the regex string used for matching the demonstration files. In the example of the single point task, the regex is:
-
-    r'single_point_task(\d{2})\.csv'
-
-The function then processes each .csv file, collecting all the rows into a list which is then saved as a .npy file in the same directory as the demonstrations. Besides the data contained in the recordings, the function also computes the Euclidean-space projection of the quaternions, which will be useful later.
+The trajectory recording should be placed within the same directory and given an identifying name. For instance, the single point task the recordings are named 'single_point_task_NN.csv', where NN is a progressive identifying number. The code then processes each .csv file, collecting all the rows into a list which is then saved as a .npy file in the same directory as the demonstrations. 
 
 ### Trimming and pose interpolation
 
@@ -124,7 +107,7 @@ To allow reproduction, the dataset must be converted to the relevant reference f
 
 ## Learning from demonstration
 
-All the following steps are showcased in the [scripts/kmp.py](scripts/kmp.py) script.
+All the following steps are showcased in each of the *kmp.py* scripts of the experiments under the [scripts/](scripts/) folder.
 
 ### GMM/GMR
 
@@ -157,9 +140,7 @@ Once the model is trained, the predict() method can be used to make new predicti
 
 ## Reproduction
 
-### LQR
-
-### Parallel position/force controller
+### Admittance controller
 
 ## References
 
@@ -175,33 +156,5 @@ Once the model is trained, the predict() method can be used to make new predicti
   Volume={38},
   Number={7},
   Pages = {833--852},
-}
-```
-
-#### [2] Generalized Orientation Learning in Robot Task Space
-[[Link to publication]](https://www.researchgate.net/publication/330675655_Generalized_Orientation_Learning_in_Robot_Task_Space)
-```
-@InProceedings{Huang19ICRA_2,
-   Title = {Generalized Orientation Learning in Robot Task Space},
-   Author = {Huang, Y. and Abu-Dakka, F. and Silv\'erio, J. and Caldwell, D. G.},
-   Booktitle = {Proc. {IEEE} International Conference on Robotics and Automation ({ICRA})},　　　　
-   Year = {2019},
-   Address = {Montreal, Canada},
-   Month = {May},
-   Pages = {2531--2537}
- }
-```
-
-
-#### [3] Uncertainty-Aware Imitation Learning using Kernelized Movement Primitives.
-[[Link to publication]](https://www.researchgate.net/publication/334884378_Uncertainty-Aware_Imitation_Learning_using_Kernelized_Movement_Primitives)
-```
-@inproceedings{inproceedings,
-author = {Silvério, João and Huang, Yanlong and Abu-Dakka, Fares and Rozo, Leonel and Caldwell, Darwin},
-year = {2019},
-month = {11},
-pages = {},
-title = {Uncertainty-Aware Imitation Learning using Kernelized Movement Primitives},
-doi = {10.1109/IROS40897.2019.8967996}
 }
 ```
