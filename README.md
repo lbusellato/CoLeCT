@@ -8,6 +8,8 @@ This repository contains the code for the CoLeCT project. The project is an end-
 * Learning the probabilistic features of the trajectories using Kernelized Movement Primitives (KMP).
 * Reproduction on an UR5e robotic manipulator with a custom admittance controller.
 
+The framework was the subject of a paper, published in IEEE Transactions on Medical Robotics and Bionics, available [here.](https://ieeexplore.ieee.org/document/10704653)
+
 ## Table of contents
 
 - [CoLeCT - Control and Learning of Contact Transitions](#colect---control-and-learning-of-contact-transitions)
